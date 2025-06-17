@@ -1,63 +1,38 @@
-// utils/api.js
-const BASE_URL = 'http://122.185.169.250/gisapi/public/api';
+// client/utils/api.js
 
 export const loginOfficer = async (email, password) => {
-  try {
-    const res = await fetch(`${BASE_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await res.json();
-
-    if (data.status === 'success') {
-      return { 
-        success: true, 
-        token: data.access_token,
-        user: data.user
-      };
-    } else {
-      return { success: false, message: data.message || 'Invalid credentials' };
-    }
-  } catch (err) {
-    console.error('Login API error:', err);
-    return { success: false, message: 'Network error' };
+  if (email === 'admin@gmail.com' && password === 'admin@123') {
+    return {
+      success: true,
+      token: 'mock-token-123',
+      user: {
+        id: 1,
+        name: 'Arias Society',
+        email: 'admin@gmail.com',
+        designation: 'SPD'
+      }
+    };
+  } else {
+    return { success: false, message: 'Invalid credentials' };
   }
 };
 
 export const getProfile = async (userId, token) => {
-  try {
-    const res = await fetch(`${BASE_URL}/profile/${userId}`, {
-      method: 'GET',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-    });
-
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error('Profile API error:', err);
-    throw err;
-  }
+  return {
+    data: {
+      id: userId,
+      name: 'Arias Society',
+      email: 'admin@gmail.com',
+      designation: 'SPD'
+    }
+  };
 };
 
 export const getBeelList = async (token) => {
-  try {
-    const res = await fetch('http://122.185.169.250/api/beellist', {
-      method: 'GET',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-    });
-
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error('Beel List API error:', err);
-    throw err;
-  }
+  return {
+    data: [
+      { id: 1, name: 'Beel A', district_name: 'District 1', water_area: 150 },
+      { id: 2, name: 'Beel B', district_name: 'District 2', water_area: 200 },
+    ]
+  };
 };

@@ -1,123 +1,54 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { loginOfficer } from '../utils/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Login = ({ navigation }) => {
-  const [email, setEmail] = useState('admin@gmail.com'); // Pre-filled for testing
-  const [password, setPassword] = useState('admin@123'); // Pre-filled for testing
-  const [isLoading, setIsLoading] = useState(false);
+  const [email, setEmail] = useState('admin@gmail.com');
+  const [password, setPassword] = useState('admin@123');
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please enter both email and password');
-      return;
-    }
+    setLoading(true);
+    const res = await loginOfficer(email, password);
+    setLoading(false);
 
-    setIsLoading(true);
-    
-    try {
-      const result = await loginOfficer(email, password);
-      
-      if (result.success) {
-        // Store token and user data
-        await AsyncStorage.setItem('access_token', result.token);
-        await AsyncStorage.setItem('user', JSON.stringify(result.user));
-        
-        // Navigate to dashboard with user data
-        navigation.navigate('Dashboard', {
-          user: result.user,
-          token: result.token
-        });
-      } else {
-        Alert.alert('Error', result.message || 'Invalid credentials');
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      Alert.alert('Error', 'An error occurred during login. Please try again.');
-    } finally {
-      setIsLoading(false);
+    if (res.success) {
+      navigation.navigate('Dashboard', { user: res.user, token: res.token });
+    } else {
+      Alert.alert('Login Failed', res.message);
     }
-  };
-
-  const handleForgotPassword = () => {
-    Alert.alert('Forgot Password', 'Password reset link will be sent to your email');
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Officer Login</Text>
-      
       <TextInput
-        style={styles.input}
         placeholder="Email"
         value={email}
         onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-      />
-      
-      <TextInput
         style={styles.input}
+        autoCapitalize="none"
+      />
+      <TextInput
         placeholder="Password"
         value={password}
         onChangeText={setPassword}
+        style={styles.input}
         secureTextEntry
       />
-      
-      {isLoading ? (
-        <ActivityIndicator size="large" color="#3498db" />
-      ) : (
-        <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Login</Text>
-        </TouchableOpacity>
-      )}
-      
-      <TouchableOpacity onPress={handleForgotPassword}>
-        <Text style={styles.forgotPassword}>Forgot Password?</Text>
+      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Login</Text>}
       </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#f5f5f5',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  input: {
-    height: 50,
-    borderColor: '#ccc',
-    borderWidth: 1,
-    borderRadius: 5,
-    marginBottom: 15,
-    paddingHorizontal: 10,
-    backgroundColor: '#fff',
-  },
-  loginButton: {
-    backgroundColor: '#3498db',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  forgotPassword: {
-    color: '#3498db',
-    textAlign: 'center',
-    marginTop: 10,
-  },
+  container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#f9f9f9' },
+  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
+  input: { borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 5, marginBottom: 15 },
+  button: { backgroundColor: '#007AFF', padding: 15, borderRadius: 5, alignItems: 'center' },
+  buttonText: { color: '#fff', fontWeight: 'bold' },
 });
 
 export default Login;
