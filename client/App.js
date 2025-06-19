@@ -6,6 +6,7 @@ import DashboardScreen from './screens/Dashboard';
 import ProfileScreen from './screens/Profile';
 import SettingsScreen from './screens/Settings';
 import ChangePasswordScreen from './screens/changepassword';
+import AddBeelScreen from './screens/AddBeel';
 
 const Stack = createNativeStackNavigator();
 
@@ -37,6 +38,20 @@ export default function App() {
           name="ChangePassword" 
           component={ChangePasswordScreen} 
           options={{ title: 'Change Password' }}
+        />
+        <Stack.Screen 
+          name="AddBeel" 
+          component={AddBeelScreen} 
+          options={{ 
+            title: 'Add New Beel',
+            headerStyle: {
+              backgroundColor: '#3498db',
+            },
+            headerTintColor: '#fff',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+            },
+          }}
         />
       </Stack.Navigator>
     </NavigationContainer>

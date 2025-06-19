@@ -93,6 +93,10 @@ const DashboardScreen = ({ route, navigation }) => {
     // Already on dashboard, just close menu
   };
 
+  const navigateToAddBeel = () => {
+    navigation.navigate('AddBeel', { token, user });
+  };
+
   if (loading && !refreshing) {
     return (
       <View style={styles.center}>
@@ -216,6 +220,11 @@ const DashboardScreen = ({ route, navigation }) => {
         }
         contentContainerStyle={styles.list}
       />
+
+      {/* Floating Action Button */}
+      <TouchableOpacity style={styles.fab} onPress={navigateToAddBeel}>
+        <Text style={styles.fabIcon}>+</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -348,7 +357,29 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   list: {
-    paddingBottom: 20,
+    paddingBottom: 80, // Add bottom padding to avoid FAB overlap
+  },
+  // Floating Action Button
+  fab: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#e74c3c',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  fabIcon: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
   },
 });
 export default DashboardScreen;

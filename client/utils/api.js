@@ -59,3 +59,25 @@ export const getBeelList = async (token) => {
     throw error;
   }
 };
+// export const addBeel = async (beelData, token) => {
+//   try {
+//     const response = await fetch(`${BASE_URL}/beeladd`, {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//         'Authorization': `Bearer ${token}`,
+//         'Accept': 'application/json'
+//       },
+//       body: JSON.stringify(beelData)
+//     });
+
+//     if (!response.ok) {
+//       throw new Error(`HTTP error! status: ${response.status}`);
+//     }
+
+//     return await response.json();
+//   } catch (error) {
+//     console.error('Add Beel error:', error);
+//     throw error;
+//   }
+// };
