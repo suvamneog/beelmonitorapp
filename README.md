@@ -111,4 +111,3 @@ For any issues or questions, please open an issue on the GitHub repository.
 
 ---
 
-Happy monitoring! 🐝🌊
