@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { loginOfficer } from '../utils/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const Login = ({ navigation }) => {
-  const [email, setEmail] = useState('admin@gmail.com'); // Pre-filled for testing
-  const [password, setPassword] = useState('admin@123'); // Pre-filled for testing
-  const [isLoading, setIsLoading] = useState(false);
+const LoginScreen = ({ navigation }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -14,34 +13,25 @@ const Login = ({ navigation }) => {
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
     
     try {
       const result = await loginOfficer(email, password);
       
-      if (result.success) {
-        // Store token and user data
-        await AsyncStorage.setItem('access_token', result.token);
-        await AsyncStorage.setItem('user', JSON.stringify(result.user));
-        
-        // Navigate to dashboard with user data
+      if (result.status === 'success') {
         navigation.navigate('Dashboard', {
+          token: result.access_token,
           user: result.user,
-          token: result.token
+          userId: result.user.id  // Add userId for Profile screen
         });
       } else {
-        Alert.alert('Error', result.message || 'Invalid credentials');
+        Alert.alert('Error', result.message || 'Login failed');
       }
     } catch (error) {
-      console.error('Login error:', error);
-      Alert.alert('Error', 'An error occurred during login. Please try again.');
+      Alert.alert('Error', error.message || 'Login failed');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
-
-  const handleForgotPassword = () => {
-    Alert.alert('Forgot Password', 'Password reset link will be sent to your email');
   };
 
   return (
@@ -65,17 +55,13 @@ const Login = ({ navigation }) => {
         secureTextEntry
       />
       
-      {isLoading ? (
+      {loading ? (
         <ActivityIndicator size="large" color="#3498db" />
       ) : (
-        <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+        <TouchableOpacity style={styles.button} onPress={handleLogin}>
           <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
       )}
-      
-      <TouchableOpacity onPress={handleForgotPassword}>
-        <Text style={styles.forgotPassword}>Forgot Password?</Text>
-      </TouchableOpacity>
     </View>
   );
 };
@@ -95,29 +81,23 @@ const styles = StyleSheet.create({
   },
   input: {
     height: 50,
-    borderColor: '#ccc',
+    borderColor: '#ddd',
     borderWidth: 1,
-    borderRadius: 5,
     marginBottom: 15,
-    paddingHorizontal: 10,
+    padding: 10,
+    borderRadius: 5,
     backgroundColor: '#fff',
   },
-  loginButton: {
+  button: {
     backgroundColor: '#3498db',
     padding: 15,
     borderRadius: 5,
     alignItems: 'center',
-    marginBottom: 10,
   },
   buttonText: {
     color: '#fff',
     fontWeight: 'bold',
   },
-  forgotPassword: {
-    color: '#3498db',
-    textAlign: 'center',
-    marginTop: 10,
-  },
 });
 
-export default Login;
+export default LoginScreen;

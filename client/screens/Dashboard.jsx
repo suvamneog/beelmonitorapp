@@ -1,55 +1,132 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { getProfile, getBeelList } from '../utils/api';
+import { View, Text, FlatList, ActivityIndicator, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
+import { getBeelList } from '../utils/api';
+import BeelCard from '../components/BeelCard';
 
-const Dashboard = ({ route }) => {
-  const [profile, setProfile] = useState(null);
-  const [beelList, setBeelList] = useState([]);
+const DashboardScreen = ({ route, navigation }) => {
+  const [beels, setBeels] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { user, token } = route.params;
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  const { token, user } = route.params;
+
+  const fetchBeels = async () => {
+    try {
+      setError(null);
+      console.log('Token being sent:', token);
+      const response = await getBeelList(token);
+      console.log('API Response:', response);
+      
+      if (response.status === 'success') {
+        console.log('Beels data:', response.data);
+        setBeels(response.data || []);
+      } else {
+        throw new Error(response.message || 'Failed to load data');
+      }
+    } catch (err) {
+      console.log('Error details:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch profile
-        const profileResponse = await getProfile(user.id, token);
-        setProfile(profileResponse.data);
-        
-        // Fetch beel list
-        const beelResponse = await getBeelList(token);
-        setBeelList(beelResponse.data);
-      } catch (error) {
-        console.error('Dashboard error:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+    fetchBeels();
   }, []);
 
-  if (loading) {
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchBeels();
+  };
+
+  const navigateToProfile = () => {
+    navigation.navigate('Profile', { 
+      userId: user.id, 
+      token: token 
+    });
+  };
+
+  if (loading && !refreshing) {
     return (
-      <View style={styles.container}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color="#3498db" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.error}>{error}</Text>
+        <TouchableOpacity onPress={fetchBeels}>
+          <Text style={styles.retry}>Tap to retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Welcome, {profile?.name}</Text>
-      <Text style={styles.subtitle}>Designation: {profile?.designation}</Text>
-      <Text style={styles.subtitle}>Email: {profile?.email}</Text>
-      
-      <Text style={styles.sectionTitle}>Beel List</Text>
-      {beelList.map(beel => (
-        <View key={beel.id} style={styles.beelCard}>
-          <Text style={styles.beelName}>{beel.name}</Text>
-          <Text>District: {beel.district_name}</Text>
-          <Text>Water Area: {beel.water_area} hectares</Text>
-        </View>
-      ))}
+      {/* Navigation Bar */}
+      <View style={styles.navbar}>
+        <TouchableOpacity 
+          style={styles.navItem} 
+          onPress={() => navigation.navigate('Dashboard', { token, user })}
+        >
+          <Text style={styles.navText}>Home</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.navItem} 
+          onPress={navigateToProfile}
+        >
+          <Text style={styles.navText}>Profile</Text>
+        </TouchableOpacity>
+        
+  <TouchableOpacity 
+  style={styles.navItem} 
+  onPress={() => navigation.navigate('Settings', { token, user })}
+>
+  <Text style={styles.navText}>Settings</Text>
+</TouchableOpacity>
+      </View>
+
+      <FlatList
+        data={beels}
+        renderItem={({ item }) => (
+          <BeelCard 
+            name={item.name}
+            district={item.district_name}
+            year={item.year}
+            water_area={item.water_area}
+            t_sanction_amount={item.t_sanction_amount}
+            latitude={item.latitude}
+            longitude={item.longitude}
+          />
+        )}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onPress={onRefresh}
+            colors={['#3498db']}
+          />
+        }
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <Text style={styles.welcome}>Welcome, {user.name}</Text>
+            <Text style={styles.designation}>{user.designation}</Text>
+          </View>
+        }
+        ListEmptyComponent={
+          <View style={styles.center}>
+            <Text>No beel data available</Text>
+          </View>
+        }
+        contentContainerStyle={styles.list}
+      />
     </View>
   );
 };
@@ -57,39 +134,52 @@ const Dashboard = ({ route }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#f5f5f5',
   },
-  title: {
-    fontSize: 22,
+  navbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    backgroundColor: '#3498db',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2980b9',
+  },
+  navItem: {
+    paddingHorizontal: 10,
+  },
+  navText: {
+    color: 'white',
     fontWeight: 'bold',
+    fontSize: 16,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  error: {
+    color: 'red',
     marginBottom: 10,
   },
-  subtitle: {
-    fontSize: 16,
-    marginBottom: 5,
+  retry: {
+    color: '#3498db',
   },
-  sectionTitle: {
+  header: {
+    padding: 15,
+    backgroundColor: '#fff',
+    marginBottom: 10,
+  },
+  welcome: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginTop: 20,
-    marginBottom: 10,
   },
-  beelCard: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 5,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+  designation: {
+    color: '#666',
   },
-  beelName: {
-    fontWeight: 'bold',
-    marginBottom: 5,
+  list: {
+    paddingBottom: 20,
+  backgroundColor: '#f5f5f5',
   },
 });
 
-export default Dashboard;
+export default DashboardScreen;

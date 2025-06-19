@@ -1,63 +1,61 @@
-// utils/api.js
 const BASE_URL = 'http://122.185.169.250/gisapi/public/api';
 
 export const loginOfficer = async (email, password) => {
   try {
-    const res = await fetch(`${BASE_URL}/login`, {
+    const response = await fetch(`${BASE_URL}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
 
-    const data = await res.json();
-
-    if (data.status === 'success') {
-      return { 
-        success: true, 
-        token: data.access_token,
-        user: data.user
-      };
-    } else {
-      return { success: false, message: data.message || 'Invalid credentials' };
+    if (!response.ok) {
+      throw new Error('Login failed');
     }
-  } catch (err) {
-    console.error('Login API error:', err);
-    return { success: false, message: 'Network error' };
+
+    return await response.json();
+  } catch (error) {
+    console.error('Login error:', error);
+    throw error;
   }
 };
 
 export const getProfile = async (userId, token) => {
   try {
-    const res = await fetch(`${BASE_URL}/profile/${userId}`, {
-      method: 'GET',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+    const response = await fetch(`${BASE_URL}/profile/${userId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
     });
-
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error('Profile API error:', err);
-    throw err;
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Profile error:', error);
+    throw error;
   }
 };
 
 export const getBeelList = async (token) => {
   try {
-    const res = await fetch('http://122.185.169.250/api/beellist', {
+ const response = await fetch(`${BASE_URL}/beellist`, {
       method: 'GET',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
     });
 
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error('Beel List API error:', err);
-    throw err;
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Beel List error:', error);
+    throw error;
   }
 };
