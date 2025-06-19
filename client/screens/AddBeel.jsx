@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { addBeel } from '../utils/api';
 
 const { width, height } = Dimensions.get('window');
 
@@ -156,47 +157,39 @@ const AddBeelScreen = ({ route, navigation }) => {
     return true;
   };
 
-  const handleSubmit = async () => {
-    if (!validateForm()) return;
+const handleSubmit = async () => {
+  if (!validateForm()) return;
 
-    setLoading(true);
-    
-    try {
-      const response = await fetch('http://122.185.169.250/gisapi/public/api/beeladd', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          ...formData,
-          district_id: user.district_id || 1, 
-        }),
-      });
+  setLoading(true);
+  
+  try {
+    const result = await addBeel({
+      ...formData,
+      district_id: user.district_id || 1, 
+    }, token);
 
-      const result = await response.json();
-      
-      if (result.success) {
-        Alert.alert(
-          'Success',
-          result.message || 'Beel added successfully!',
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack()
-            }
-          ]
-        );
-      } else {
-        throw new Error(result.message || 'Failed to add beel');
-      }
-    } catch (error) {
-      console.log('Submit error:', error);
-      Alert.alert('Error', error.message || 'Failed to add beel');
-    } finally {
-      setLoading(false);
+    Alert.alert(
+      'Success',
+      result.message || 'Beel added successfully!',
+      [
+        {
+          text: 'OK',
+          onPress: () => navigation.goBack()
+        }
+      ]
+    );
+  } catch (error) {
+    console.log('Submit error:', error);
+    // Display a more user-friendly error message
+    let errorMessage = error.message;
+    if (errorMessage.includes('Network request failed')) {
+      errorMessage = 'Network error. Please check your internet connection.';
     }
-  };
+    Alert.alert('Error', errorMessage);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <ScrollView style={styles.container}>

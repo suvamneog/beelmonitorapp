@@ -59,25 +59,39 @@ export const getBeelList = async (token) => {
     throw error;
   }
 };
-// export const addBeel = async (beelData, token) => {
-//   try {
-//     const response = await fetch(`${BASE_URL}/beeladd`, {
-//       method: 'POST',
-//       headers: {
-//         'Content-Type': 'application/json',
-//         'Authorization': `Bearer ${token}`,
-//         'Accept': 'application/json'
-//       },
-//       body: JSON.stringify(beelData)
-//     });
+// api.js
+export const addBeel = async (beelData, token) => {
+  try {
+    const response = await fetch(`${BASE_URL}/beeladd`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(beelData)
+    });
 
-//     if (!response.ok) {
-//       throw new Error(`HTTP error! status: ${response.status}`);
-//     }
+    const text = await response.text(); // First get the raw text
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {}; // Try to parse it as JSON
+    } catch (e) {
+      // If parsing fails, throw an error with the raw response
+      throw new Error(text || 'Invalid server response');
+    }
 
-//     return await response.json();
-//   } catch (error) {
-//     console.error('Add Beel error:', error);
-//     throw error;
-//   }
-// };
+    if (!response.ok) {
+      throw new Error(data.message || text || 'Failed to add beel');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Add Beel error:', error);
+    // Format the error message to be more user-friendly
+    let errorMessage = error.message;
+    if (errorMessage.includes('<html>') || errorMessage.includes('<!DOCTYPE')) {
+      errorMessage = 'Server error occurred. Please try again later.';
+    }
+    throw new Error(errorMessage);
+  }
+};
