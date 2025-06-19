@@ -1,13 +1,28 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
+import { 
+  View, 
+  Text, 
+  FlatList, 
+  ActivityIndicator, 
+  StyleSheet, 
+  RefreshControl, 
+  TouchableOpacity,
+  Modal,
+  Animated,
+  Dimensions
+} from 'react-native';
 import { getBeelList } from '../utils/api';
 import BeelCard from '../components/BeelCard';
+
+const { width } = Dimensions.get('window');
 
 const DashboardScreen = ({ route, navigation }) => {
   const [beels, setBeels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const slideAnim = useState(new Animated.Value(-width * 0.8))[0];
   const { token, user } = route.params;
 
   const fetchBeels = async () => {
@@ -41,11 +56,41 @@ const DashboardScreen = ({ route, navigation }) => {
     fetchBeels();
   };
 
+  const toggleMenu = () => {
+    if (menuVisible) {
+      // Close menu
+      Animated.timing(slideAnim, {
+        toValue: -width * 0.8,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => setMenuVisible(false));
+    } else {
+      // Open menu
+      setMenuVisible(true);
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  };
+
   const navigateToProfile = () => {
+    toggleMenu();
     navigation.navigate('Profile', { 
       userId: user.id, 
       token: token 
     });
+  };
+
+  const navigateToSettings = () => {
+    toggleMenu();
+    navigation.navigate('Settings', { token, user });
+  };
+
+  const navigateToHome = () => {
+    toggleMenu();
+    // Already on dashboard, just close menu
   };
 
   if (loading && !refreshing) {
@@ -69,30 +114,74 @@ const DashboardScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Navigation Bar */}
-      <View style={styles.navbar}>
-        <TouchableOpacity 
-          style={styles.navItem} 
-          onPress={() => navigation.navigate('Dashboard', { token, user })}
-        >
-          <Text style={styles.navText}>Home</Text>
+      {/* Header with Menu Icon */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.menuButton} onPress={toggleMenu}>
+          <View style={styles.menuIcon}>
+            <View style={styles.menuLine} />
+            <View style={styles.menuLine} />
+            <View style={styles.menuLine} />
+          </View>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.navItem} 
-          onPress={navigateToProfile}
-        >
-          <Text style={styles.navText}>Profile</Text>
-        </TouchableOpacity>
-        
-  <TouchableOpacity 
-  style={styles.navItem} 
-  onPress={() => navigation.navigate('Settings', { token, user })}
->
-  <Text style={styles.navText}>Settings</Text>
-</TouchableOpacity>
+        <Text style={styles.headerTitle}>Beel Dashboard</Text>
+        <View style={styles.placeholder} />
       </View>
 
+      {/* Popup Navigation Menu */}
+      <Modal
+        visible={menuVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={toggleMenu}
+      >
+        <TouchableOpacity 
+          style={styles.overlay} 
+          activeOpacity={1} 
+          onPress={toggleMenu}
+        >
+          <Animated.View 
+            style={[
+              styles.menuContainer,
+              {
+                transform: [{ translateX: slideAnim }]
+              }
+            ]}
+          >
+            <TouchableOpacity activeOpacity={1}>
+              {/* User Info Section */}
+              <View style={styles.userSection}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {user.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={styles.userName}>{user.name}</Text>
+                <Text style={styles.userDesignation}>{user.designation}</Text>
+              </View>
+
+              {/* Menu Items */}
+              <View style={styles.menuItems}>
+                <TouchableOpacity style={styles.menuItem} onPress={navigateToHome}>
+                  <Text style={styles.menuIcon}>🏠</Text>
+                  <Text style={styles.menuText}>Home</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.menuItem} onPress={navigateToProfile}>
+                  <Text style={styles.menuIcon}>👤</Text>
+                  <Text style={styles.menuText}>Profile</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.menuItem} onPress={navigateToSettings}>
+                  <Text style={styles.menuIcon}>⚙️</Text>
+                  <Text style={styles.menuText}>Settings</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Main Content */}
       <FlatList
         data={beels}
         renderItem={({ item }) => (
@@ -110,12 +199,12 @@ const DashboardScreen = ({ route, navigation }) => {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onPress={onRefresh}
+            onRefresh={onRefresh}
             colors={['#3498db']}
           />
         }
         ListHeaderComponent={
-          <View style={styles.header}>
+          <View style={styles.welcomeSection}>
             <Text style={styles.welcome}>Welcome, {user.name}</Text>
             <Text style={styles.designation}>{user.designation}</Text>
           </View>
@@ -134,23 +223,105 @@ const DashboardScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f5f5f5',
   },
-  navbar: {
+  header: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#3498db',
     paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2980b9',
+    paddingHorizontal: 20,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  navItem: {
-    paddingHorizontal: 10,
+  menuButton: {
+    padding: 5,
   },
-  navText: {
+  menuIcon: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+  },
+  menuLine: {
+    width: 24,
+    height: 3,
+    backgroundColor: 'white',
+    borderRadius: 2,
+  },
+  headerTitle: {
     color: 'white',
+    fontSize: 18,
     fontWeight: 'bold',
+  },
+  placeholder: {
+    width: 34, // Same width as menu button to center title
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  menuContainer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: width * 0.8,
+    backgroundColor: 'white',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  userSection: {
+    backgroundColor: '#3498db',
+    padding: 20,
+    alignItems: 'center',
+    paddingTop: 50,
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  avatarText: {
+    color: 'white',
+    fontSize: 32,
+    fontWeight: 'bold',
+  },
+  userName: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  userDesignation: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+  },
+  menuItems: {
+    paddingTop: 20,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  menuText: {
     fontSize: 16,
+    marginLeft: 15,
+    color: '#333',
   },
   center: {
     flex: 1,
@@ -164,7 +335,7 @@ const styles = StyleSheet.create({
   retry: {
     color: '#3498db',
   },
-  header: {
+  welcomeSection: {
     padding: 15,
     backgroundColor: '#fff',
     marginBottom: 10,
@@ -178,8 +349,6 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingBottom: 20,
-  backgroundColor: '#f5f5f5',
   },
 });
-
 export default DashboardScreen;

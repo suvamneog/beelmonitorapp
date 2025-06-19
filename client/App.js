@@ -28,7 +28,6 @@ export default function App() {
           component={ProfileScreen}
           options={{ title: 'User Profile' }}
         />
-        {/* Add these to your stack navigator */}
         <Stack.Screen 
           name="Settings" 
           component={SettingsScreen} 
