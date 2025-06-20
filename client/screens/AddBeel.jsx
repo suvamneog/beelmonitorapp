@@ -198,7 +198,6 @@ const handleSubmit = async () => {
       </View>
 
       <View style={styles.form}>
-        {/* Location Section */}
         <View style={styles.locationSection}>
           <Text style={styles.sectionTitle}>Location Information</Text>
           

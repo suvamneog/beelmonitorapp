@@ -59,7 +59,7 @@ export const getBeelList = async (token) => {
     throw error;
   }
 };
-// api.js
+
 export const addBeel = async (beelData, token) => {
   try {
     const response = await fetch(`${BASE_URL}/beeladd`, {
@@ -71,12 +71,12 @@ export const addBeel = async (beelData, token) => {
       body: JSON.stringify(beelData)
     });
 
-    const text = await response.text(); // First get the raw text
+    const text = await response.text();
     let data;
     try {
-      data = text ? JSON.parse(text) : {}; // Try to parse it as JSON
+      data = text ? JSON.parse(text) : {}; 
     } catch (e) {
-      // If parsing fails, throw an error with the raw response
+
       throw new Error(text || 'Invalid server response');
     }
 
@@ -87,7 +87,7 @@ export const addBeel = async (beelData, token) => {
     return data;
   } catch (error) {
     console.error('Add Beel error:', error);
-    // Format the error message to be more user-friendly
+
     let errorMessage = error.message;
     if (errorMessage.includes('<html>') || errorMessage.includes('<!DOCTYPE')) {
       errorMessage = 'Server error occurred. Please try again later.';

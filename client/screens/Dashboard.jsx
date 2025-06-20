@@ -90,7 +90,12 @@ const DashboardScreen = ({ route, navigation }) => {
 
   const navigateToHome = () => {
     toggleMenu();
-    // Already on dashboard, just close menu
+    navigation.navigate('Home', { token, user });
+  };
+
+  const navigateToSurveyForm = () => {
+    toggleMenu();
+    navigation.navigate('SurveyForm', { token, user });
   };
 
   const navigateToAddBeel = () => {
@@ -168,6 +173,16 @@ const DashboardScreen = ({ route, navigation }) => {
                 <TouchableOpacity style={styles.menuItem} onPress={navigateToHome}>
                   <Text style={styles.menuIcon}>🏠</Text>
                   <Text style={styles.menuText}>Home</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.menuItem} onPress={toggleMenu}>
+                  <Text style={styles.menuIcon}>🏢</Text>
+                  <Text style={styles.menuText}>Dashboard</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.menuItem} onPress={navigateToSurveyForm}>
+                  <Text style={styles.menuIcon}>📋</Text>
+                  <Text style={styles.menuText}>Survey Form</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.menuItem} onPress={navigateToProfile}>
@@ -382,4 +397,5 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+
 export default DashboardScreen;

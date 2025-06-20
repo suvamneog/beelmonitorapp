@@ -18,12 +18,11 @@ const LoginScreen = ({ navigation }) => {
     try {
       const result = await loginOfficer(email, password);
       
-      if (result.status === 'success') {
-        navigation.navigate('Dashboard', {
-          token: result.access_token,
-          user: result.user,
-          userId: result.user.id  // Add userId for Profile screen
-        });
+  if (result.status === 'success') {
+  navigation.navigate('Home', {
+    token: result.access_token,
+    user: result.user
+  });
       } else {
         Alert.alert('Error', result.message || 'Login failed');
       }
