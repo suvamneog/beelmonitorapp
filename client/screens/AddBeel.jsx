@@ -11,43 +11,81 @@ import {
   Modal,
   Dimensions
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { addBeel } from '../utils/api';
+import { addBeel, updateBeel, getMasterData } from '../utils/api';
 
 const { width, height } = Dimensions.get('window');
 
 const AddBeelScreen = ({ route, navigation }) => {
+  const { token, user, beelData, isEdit } = route.params || {};
   const [formData, setFormData] = useState({
-    name: '',
-    year: '',
-    water_area: '',
-    t_sanction_amount: '',
-    production: '',
-    account_no: '',
-    ifsc: '',
-    branch: '',
-    nom: '',
-    nof: '',
-    latitude: '',
-    longitude: '',
-    district_id: ''
+    id: beelData?.id || '',
+    name: beelData?.name || '',
+    year: beelData?.year || '',
+    water_area: beelData?.water_area || '',
+    t_sanction_amount: beelData?.t_sanction_amount || '',
+    production: beelData?.production || '',
+    pm: beelData?.pm || '',
+    fp: beelData?.fp || '',
+    account_no: beelData?.account_no || '',
+    ifsc: beelData?.ifsc || '',
+    branch: beelData?.branch || '',
+    nom: beelData?.nom || '',
+    nof: beelData?.nof || '',
+    latitude: beelData?.latitude || '',
+    longitude: beelData?.longitude || '',
+    district_id: beelData?.district_id || user?.district_id || 1
   });
   
   const [loading, setLoading] = useState(false);
-  const [locationLoading, setLocationLoading] = useState(true);
+  const [locationLoading, setLocationLoading] = useState(!isEdit);
   const [mapVisible, setMapVisible] = useState(false);
   const [region, setRegion] = useState(null);
   const [marker, setMarker] = useState(null);
   const [address, setAddress] = useState('');
+  const [districts, setDistricts] = useState([]);
+  const [loadingDistricts, setLoadingDistricts] = useState(true);
   const mapRef = useRef(null);
-  const { token, user } = route.params;
 
   useEffect(() => {
-    const fetchLocation = async () => {
-      await getCurrentLocation();
+    const fetchInitialData = async () => {
+      try {
+        const masterData = await getMasterData(token);
+        setDistricts(masterData.data.district);
+        
+        const initialDistrictId = beelData?.district_id || user?.district_id || 1;
+        
+        setFormData(prev => ({
+          ...prev,
+          district_id: initialDistrictId
+        }));
+      } catch (error) {
+        console.error('Error fetching districts:', error);
+        Alert.alert('Error', 'Failed to load district data');
+      } finally {
+        setLoadingDistricts(false);
+      }
+
+      if (!isEdit && !beelData?.latitude) {
+        await getCurrentLocation();
+      } else if (beelData?.latitude && beelData?.longitude) {
+        const coords = {
+          latitude: parseFloat(beelData.latitude),
+          longitude: parseFloat(beelData.longitude)
+        };
+        setMarker(coords);
+        setRegion({
+          ...coords,
+          latitudeDelta: 0.0922,
+          longitudeDelta: 0.0421,
+        });
+        getAddress(coords.latitude, coords.longitude);
+      }
     };
-    fetchLocation();
+    
+    fetchInitialData();
   }, []);
 
   const getCurrentLocation = async () => {
@@ -140,64 +178,151 @@ const AddBeelScreen = ({ route, navigation }) => {
   };
 
   const validateForm = () => {
-    const requiredFields = ['name', 'year', 'water_area', 't_sanction_amount', 'production'];
-    
-    for (let field of requiredFields) {
-      if (!formData[field].trim()) {
-        Alert.alert('Validation Error', `${field.replace('_', ' ')} is required`);
+    // Required fields
+    const requiredFields = [
+      { field: 'name', label: 'Beel Name', type: 'string', maxLength: 255 },
+      { field: 'year', label: 'Year', type: 'string' },
+      { field: 'district_id', label: 'District', type: 'numeric' }
+    ];
+
+    // Validate required fields
+    for (let {field, label, type, maxLength} of requiredFields) {
+      const value = formData[field]?.toString().trim();
+      
+      if (!value) {
+        Alert.alert('Validation Error', `${label} is required`);
+        return false;
+      }
+
+      if (type === 'numeric' && isNaN(Number(value))) {
+        Alert.alert('Validation Error', `${label} must be a number`);
+        return false;
+      }
+
+      if (maxLength && value.length > maxLength) {
+        Alert.alert('Validation Error', `${label} cannot exceed ${maxLength} characters`);
         return false;
       }
     }
 
-    if (!formData.latitude || !formData.longitude) {
-      Alert.alert('Location Required', 'Please select location on map');
+    // Validate numeric fields
+    const numericFields = [
+      { field: 'water_area', label: 'Water Area' },
+      { field: 't_sanction_amount', label: 'Total Sanction Amount' },
+      { field: 'production', label: 'Production' },
+      { field: 'nom', label: 'Number of Members' },
+      { field: 'nof', label: 'Number of Families' }
+    ];
+
+    for (let {field, label} of numericFields) {
+      if (formData[field] && isNaN(Number(formData[field]))) {
+        Alert.alert('Validation Error', `${label} must be a number`);
+        return false;
+      }
+    }
+
+    // Validate account number
+    if (formData.account_no) {
+      const accountNo = formData.account_no.toString();
+      if (accountNo.length < 9 || accountNo.length > 20 || !/^\d+$/.test(accountNo)) {
+        Alert.alert('Validation Error', 'Account Number must be 9-20 digits');
+        return false;
+      }
+    }
+
+    // Validate IFSC code
+    if (formData.ifsc && formData.ifsc.length > 11) {
+      Alert.alert('Validation Error', 'IFSC Code cannot exceed 11 characters');
       return false;
     }
 
     return true;
   };
 
-const handleSubmit = async () => {
-  if (!validateForm()) return;
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
 
-  setLoading(true);
-  
-  try {
-    const result = await addBeel({
-      ...formData,
-      district_id: user.district_id || 1, 
-    }, token);
+    setLoading(true);
+    
+    try {
+      // Prepare data with proper types
+      const submissionData = {
+        ...formData,
+        water_area: formData.water_area ? parseFloat(formData.water_area) : null,
+        t_sanction_amount: formData.t_sanction_amount ? parseFloat(formData.t_sanction_amount) : null,
+        production: formData.production ? parseFloat(formData.production) : null,
+        nom: formData.nom ? parseInt(formData.nom) : null,
+        nof: formData.nof ? parseInt(formData.nof) : null,
+        district_id: parseInt(formData.district_id)
+      };
 
-    Alert.alert(
-      'Success',
-      result.message || 'Beel added successfully!',
-      [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack()
-        }
-      ]
-    );
-  } catch (error) {
-    console.log('Submit error:', error);
-    // Display a more user-friendly error message
-    let errorMessage = error.message;
-    if (errorMessage.includes('Network request failed')) {
-      errorMessage = 'Network error. Please check your internet connection.';
+      let result;
+      if (isEdit) {
+        result = await updateBeel(submissionData, token);
+      } else {
+        result = await addBeel(submissionData, token);
+      }
+
+      Alert.alert(
+        'Success',
+        result.message || `Beel ${isEdit ? 'updated' : 'added'} successfully!`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              navigation.navigate('Dashboard', {
+                token,
+                user,
+                shouldRefresh: true
+              });
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.log('Submit error:', error);
+      let errorMessage = error.message;
+      if (errorMessage.includes('Network request failed')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      }
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setLoading(false);
     }
-    Alert.alert('Error', errorMessage);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Add New Beel</Text>
+        <Text style={styles.title}>{isEdit ? 'Edit Beel' : 'Add New Beel'}</Text>
       </View>
 
       <View style={styles.form}>
+        {/* District Picker */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>District *</Text>
+          {loadingDistricts ? (
+            <ActivityIndicator size="small" color="#3498db" />
+          ) : (
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={formData.district_id}
+                style={styles.picker}
+                onValueChange={(itemValue) => handleInputChange('district_id', itemValue)}
+              >
+                {districts.map((district) => (
+                  <Picker.Item 
+                    key={district.id} 
+                    label={district.name} 
+                    value={district.id} 
+                  />
+                ))}
+              </Picker>
+            </View>
+          )}
+        </View>
+
+        {/* Location Information */}
         <View style={styles.locationSection}>
           <Text style={styles.sectionTitle}>Location Information</Text>
           
@@ -210,8 +335,8 @@ const handleSubmit = async () => {
                   setRegion({
                     latitude: parseFloat(formData.latitude),
                     longitude: parseFloat(formData.longitude),
-                    latitudeDelta: 26.200604,
-                    longitudeDelta: 92.937574,
+                    latitudeDelta: 0.0922,
+                    longitudeDelta: 0.0421,
                   });
                 }
               }}
@@ -271,6 +396,7 @@ const handleSubmit = async () => {
             placeholder="Beel Name *"
             value={formData.name}
             onChangeText={(value) => handleInputChange('name', value)}
+            maxLength={255}
           />
 
           <TextInput
@@ -282,26 +408,45 @@ const handleSubmit = async () => {
 
           <TextInput
             style={styles.input}
-            placeholder="Water Area (in hectares) *"
+            placeholder="Water Area (in hectares)"
             value={formData.water_area}
-            onChangeText={(value) => handleInputChange('water_area', value)}
+            onChangeText={(value) => handleInputChange('water_area', value.replace(/[^0-9.]/g, ''))}
             keyboardType="decimal-pad"
           />
 
           <TextInput
             style={styles.input}
-            placeholder="Total Sanction Amount *"
+            placeholder="Total Sanction Amount"
             value={formData.t_sanction_amount}
-            onChangeText={(value) => handleInputChange('t_sanction_amount', value)}
+            onChangeText={(value) => handleInputChange('t_sanction_amount', value.replace(/[^0-9.]/g, ''))}
             keyboardType="decimal-pad"
           />
 
           <TextInput
             style={styles.input}
-            placeholder="Production (in kg) *"
+            placeholder="Production (in kg)"
             value={formData.production}
-            onChangeText={(value) => handleInputChange('production', value)}
+            onChangeText={(value) => handleInputChange('production', value.replace(/[^0-9.]/g, ''))}
             keyboardType="decimal-pad"
+          />
+        </View>
+
+        {/* Project Information */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Project Information</Text>
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Project Manager (PM)"
+            value={formData.pm}
+            onChangeText={(value) => handleInputChange('pm', value)}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Fisheries Personnel (FP)"
+            value={formData.fp}
+            onChangeText={(value) => handleInputChange('fp', value)}
           />
         </View>
 
@@ -311,17 +456,19 @@ const handleSubmit = async () => {
           
           <TextInput
             style={styles.input}
-            placeholder="Account Number"
+            placeholder="Account Number (9-20 digits)"
             value={formData.account_no}
-            onChangeText={(value) => handleInputChange('account_no', value)}
+            onChangeText={(value) => handleInputChange('account_no', value.replace(/[^0-9]/g, ''))}
             keyboardType="numeric"
+            maxLength={20}
           />
 
           <TextInput
             style={styles.input}
-            placeholder="IFSC Code"
+            placeholder="IFSC Code (max 11 chars)"
             value={formData.ifsc}
-            onChangeText={(value) => handleInputChange('ifsc', value.toUpperCase())}
+            onChangeText={(value) => handleInputChange('ifsc', value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+            maxLength={11}
           />
 
           <TextInput
@@ -329,6 +476,7 @@ const handleSubmit = async () => {
             placeholder="Branch Name"
             value={formData.branch}
             onChangeText={(value) => handleInputChange('branch', value)}
+            maxLength={255}
           />
         </View>
 
@@ -340,7 +488,7 @@ const handleSubmit = async () => {
             style={styles.input}
             placeholder="Number of Members (NOM)"
             value={formData.nom}
-            onChangeText={(value) => handleInputChange('nom', value)}
+            onChangeText={(value) => handleInputChange('nom', value.replace(/[^0-9]/g, ''))}
             keyboardType="numeric"
           />
 
@@ -348,7 +496,7 @@ const handleSubmit = async () => {
             style={styles.input}
             placeholder="Number of Families (NOF)"
             value={formData.nof}
-            onChangeText={(value) => handleInputChange('nof', value)}
+            onChangeText={(value) => handleInputChange('nof', value.replace(/[^0-9]/g, ''))}
             keyboardType="numeric"
           />
         </View>
@@ -362,7 +510,9 @@ const handleSubmit = async () => {
           {loading ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
-            <Text style={styles.submitButtonText}>Add Beel</Text>
+            <Text style={styles.submitButtonText}>
+              {isEdit ? 'Update Beel' : 'Add Beel'}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -481,6 +631,18 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 15,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 6,
+    marginBottom: 15,
+    backgroundColor: 'white',
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 45,
+    width: '100%',
   },
   locationRow: {
     flexDirection: 'row',

@@ -9,13 +9,19 @@ const BeelCard = ({
   water_area, 
   t_sanction_amount, 
   latitude, 
-  longitude 
+  longitude,
+  onEditPress
 }) => {
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <Text style={styles.name}>{name}</Text>
-        <Text style={styles.year}>{year}</Text>
+        <View style={styles.headerRight}>
+          <Text style={styles.year}>{year}</Text>
+          <TouchableOpacity onPress={onEditPress} style={styles.editButton}>
+            <Icon name="edit" size={18} color="#3498db" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.details}>
@@ -67,6 +73,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   name: {
     fontSize: 16,
     fontWeight: '600',
@@ -75,6 +85,10 @@ const styles = StyleSheet.create({
   year: {
     fontSize: 14,
     color: '#7f8c8d',
+    marginRight: 10,
+  },
+  editButton: {
+    padding: 4,
   },
   details: {
     marginVertical: 8,

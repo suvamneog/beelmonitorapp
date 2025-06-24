@@ -23,23 +23,24 @@ const HomeScreen = ({ route, navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(-width * 0.7)).current;
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const response = await getBeelStats(token);
-        if (response.status === 'success') {
-          setStats(response.data);
-        }
-      } catch (error) {
-        console.error('Error fetching stats:', error);
-      } finally {
-        setLoading(false);
+useEffect(() => {
+  const fetchStats = async () => {
+    try {
+      const response = await getBeelStats(token);
+      console.log("API Response:", response); 
+     
+      if (response) {
+        setStats(response);  
       }
-    };
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchStats();
-  }, []);
-
+  fetchStats();
+}, []);
   const toggleMenu = () => {
     if (menuVisible) {
       Animated.timing(slideAnim, {

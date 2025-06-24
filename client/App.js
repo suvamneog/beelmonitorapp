@@ -29,28 +29,8 @@ export default function App() {
         <Stack.Screen 
           name="Dashboard" 
           component={DashboardScreen}
-          options={{ title: 'Beel Management' }}
-        />
-        <Stack.Screen 
-          name="Profile" 
-          component={ProfileScreen}
-          options={{ title: 'User Profile' }}
-        />
-        <Stack.Screen 
-          name="Settings" 
-          component={SettingsScreen} 
-          options={{ title: 'Settings' }}
-        />
-        <Stack.Screen 
-          name="ChangePassword" 
-          component={ChangePasswordScreen} 
-          options={{ title: 'Change Password' }}
-        />
-        <Stack.Screen 
-          name="AddBeel" 
-          component={AddBeelScreen} 
           options={{ 
-            title: 'Add New Beel',
+            title: 'Beel Management',
             headerStyle: {
               backgroundColor: '#3498db',
             },
@@ -59,6 +39,62 @@ export default function App() {
               fontWeight: 'bold',
             },
           }}
+        />
+        <Stack.Screen 
+          name="Profile" 
+          component={ProfileScreen}
+          options={{ 
+            title: 'User Profile',
+            headerStyle: {
+              backgroundColor: '#3498db',
+            },
+            headerTintColor: '#fff',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+            },
+          }}
+        />
+        <Stack.Screen 
+          name="Settings" 
+          component={SettingsScreen} 
+          options={{ 
+            title: 'Settings',
+            headerStyle: {
+              backgroundColor: '#3498db',
+            },
+            headerTintColor: '#fff',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+            },
+          }}
+        />
+        <Stack.Screen 
+          name="ChangePassword" 
+          component={ChangePasswordScreen} 
+          options={{ 
+            title: 'Change Password',
+            headerStyle: {
+              backgroundColor: '#3498db',
+            },
+            headerTintColor: '#fff',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+            },
+          }}
+        />
+        <Stack.Screen 
+          name="AddBeel" 
+          component={AddBeelScreen} 
+          options={({ route }) => ({ 
+            title: route.params?.isEdit ? 'Edit Beel' : 'Add New Beel',
+            headerStyle: {
+              backgroundColor: '#3498db',
+            },
+            headerTintColor: '#fff',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+            },
+          })}
         />
         <Stack.Screen 
           name="SurveyForm" 
