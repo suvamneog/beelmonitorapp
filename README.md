@@ -4,7 +4,7 @@
 
 The Beel Monitor App is a mobile application designed for officers to monitor and manage beel (water body) information. It includes features for authentication, viewing beel data, adding new beels, and managing user profiles.
 
-## Features(till 19june)
+## Features(till 1june)
 
 - User authentication (login/logout)
 - Dashboard with beel listings
@@ -12,6 +12,7 @@ The Beel Monitor App is a mobile application designed for officers to monitor an
 - User profile management
 - Password change functionality
 - Settings screen
+- Survey Form(GET,POST)
 
 ## Prerequisites
 
