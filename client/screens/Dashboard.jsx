@@ -47,6 +47,7 @@ const DashboardScreen = ({ route, navigation }) => {
       setRefreshing(false);
     }
   };
+
   useEffect(() => {
     const unsubscribe = navigation.addListener("focus", fetchData);
     return unsubscribe;
@@ -135,7 +136,7 @@ const DashboardScreen = ({ route, navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Popup Navigation Menu */}
+      {/* Popup Navigation Menu - Only visible when menuVisible is true */}
       <Modal
         visible={menuVisible}
         transparent={true}

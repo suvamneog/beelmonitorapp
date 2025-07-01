@@ -9,6 +9,7 @@ import SettingsScreen from './screens/Settings';
 import ChangePasswordScreen from './screens/changepassword';
 import AddBeelScreen from './screens/AddBeel';
 import SurveyFormScreen from './screens/SurveyFormScreen';
+import SurveyDetailsScreen from './screens/SurveyDetailsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -110,6 +111,20 @@ export default function App() {
             },
           }}
         />
+        <Stack.Screen 
+  name="SurveyDetails" 
+  component={SurveyDetailsScreen} 
+  options={{ 
+    title: 'Survey Details',
+    headerStyle: {
+      backgroundColor: '#3498db',
+    },
+    headerTintColor: '#fff',
+    headerTitleStyle: {
+      fontWeight: 'bold',
+    },
+  }}
+/>
       </Stack.Navigator>
     </NavigationContainer>
   );

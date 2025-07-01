@@ -209,12 +209,15 @@ useEffect(() => {
 
       {/* Bottom Action Buttons */}
       <View style={styles.actionButtons}>
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('SurveyForm', { token, user })}
-        >
-          <Text style={styles.actionButtonText}>Survey</Text>
-        </TouchableOpacity>
+      <TouchableOpacity 
+    style={styles.actionButton}
+    onPress={() => navigation.navigate('SurveyDetails', { 
+      surveyId: 1,
+      token: token 
+    })}
+  >
+    <Text style={styles.actionButtonText}>View Survey</Text>
+  </TouchableOpacity>
         
         <TouchableOpacity 
           style={styles.actionButton}
