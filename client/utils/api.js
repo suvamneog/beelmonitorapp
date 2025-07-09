@@ -346,62 +346,26 @@ export const updateSurvey = async (surveyData, token) => {
   }
 };
 
-export const deleteSurvey = async (surveyId, token) => {
-  try {
-    const response = await fetch(`${BASE_URL}/beelsurvey/${surveyId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/json'
-      }
-    });
+export const uploadImage = async (uri, name, type, token) => {
+  const formData = new FormData();
+  formData.append('image', {
+    uri,
+    name,
+    type: type || 'image/jpeg'
+  });
 
-    const text = await response.text();
-    let data;
-    
-    try {
-      data = text ? JSON.parse(text) : {};
-    } catch (e) {
-      if (text.startsWith('<!DOCTYPE html') || text.startsWith('<html')) {
-        throw new Error('Server returned HTML response. Please check the API endpoint.');
-      }
-      throw new Error(text || 'Invalid server response');
-    }
+  const response = await fetch(`${API_URL}/upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'multipart/form-data'
+    },
+    body: formData
+  });
 
-    if (!response.ok) {
-      let errorMessage = 'Delete failed';
-      
-      if (data.errors) {
-        errorMessage = Object.entries(data.errors)
-          .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
-          .join('\n');
-      } else if (data.message) {
-        errorMessage = data.message;
-        if (data.exception) {
-          errorMessage += ` (${data.exception})`;
-        }
-      } else if (text) {
-        errorMessage = text.length > 100 ? 'Server error occurred' : text;
-      }
-
-      throw new Error(errorMessage);
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Delete error:', {
-      message: error.message,
-      stack: error.stack,
-      surveyId: surveyId
-    });
-    
-    if (error.message.includes('Failed to fetch')) {
-      throw new Error('Network error. Please check your internet connection.');
-    }
-    if (error.message.includes('HTML response')) {
-      throw new Error('Server error. Please contact support.');
-    }
-    
-    throw error;
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to upload image');
   }
+  return data.url; 
 };

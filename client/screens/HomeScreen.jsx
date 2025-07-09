@@ -142,12 +142,12 @@ useEffect(() => {
             <View style={styles.menuItems}>
               <TouchableOpacity style={styles.menuItem} onPress={toggleMenu}>
                 <Text style={styles.menuIcon}>📊</Text>
-                <Text style={styles.menuText}>Analytics</Text>
+                <Text style={styles.menuText}>Dashboard</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.menuItem} onPress={navigateToDashboard}>
                 <Text style={styles.menuIcon}>🏢</Text>
-                <Text style={styles.menuText}>Dashboard</Text>
+                <Text style={styles.menuText}>Beel Details</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.menuItem} onPress={navigateToSurveyForm}>

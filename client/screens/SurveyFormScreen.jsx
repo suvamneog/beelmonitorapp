@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -10,9 +10,16 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Dimensions,
-  Platform
+  Platform,
+  KeyboardAvoidingView,
+  Image,
+  PermissionsAndroid
 } from 'react-native';
-import { submitSurvey, updateSurvey } from '../utils/api';
+import { Dropdown } from 'react-native-element-dropdown';
+import { submitSurvey, updateSurvey, getMasterData, uploadImage } from '../utils/api';
+import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
+import GeofencingMap from '../components/GeofencingMap';
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = width < 375;
@@ -58,11 +65,60 @@ const SurveyFormScreen = ({ route, navigation }) => {
     nos_active_fishermen: '',
     surveyor: user.name,
     date: new Date().toISOString().split('T')[0],
-    created_by: user.id
+    created_by: user.id,
+    beel_images: [],
+    image_lat: '',
+    image_lng: ''
   });
   const [loading, setLoading] = useState(false);
   const [currentPhase, setCurrentPhase] = useState(1);
   const [errors, setErrors] = useState({});
+  const [districts, setDistricts] = useState([]);
+  const [blocks, setBlocks] = useState([]);
+  const [allBlocks, setAllBlocks] = useState([]);
+  const [loadingMasterData, setLoadingMasterData] = useState(false);
+  const [isFocus, setIsFocus] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [showGeofencing, setShowGeofencing] = useState(false);
+
+  useEffect(() => {
+    const fetchMasterData = async () => {
+      try {
+        setLoadingMasterData(true);
+        const data = await getMasterData(token);
+       
+        if (data && data.data) {
+          setDistricts(data.data.district || []);
+          setAllBlocks(data.data.block || []);
+          if (isEdit && surveyData && surveyData.district_id) {
+            const selectedDistrict = data.data.district.find(
+              d => d.id.toString() === surveyData.district_id.toString()
+            );
+          
+            if (selectedDistrict) {
+              const districtBlocks = data.data.block.filter(
+                b => b.district_id.toString() === surveyData.district_id.toString()
+              );
+              setBlocks(districtBlocks);
+            } else {
+              console.warn('No matching district found for district_id:', surveyData.district_id);
+              setBlocks([]);
+            }
+          }
+        } else {
+          console.error('No data or invalid response');
+          Alert.alert('Error', 'Failed to load master data.');
+        }
+      } catch (error) {
+        console.error('Error fetching master data:', error);
+        Alert.alert('Error', 'Failed to load districts and blocks.');
+      } finally {
+        setLoadingMasterData(false);
+      }
+    };
+
+    fetchMasterData();
+  }, [token, isEdit, surveyData]);
 
   useEffect(() => {
     if (isEdit && surveyData) {
@@ -76,7 +132,10 @@ const SurveyFormScreen = ({ route, navigation }) => {
         no_household: surveyData.no_household ? String(surveyData.no_household) : '',
         nos_active_fishermen: surveyData.nos_active_fishermen ? String(surveyData.nos_active_fishermen) : '',
         district_id: surveyData.district_id ? String(surveyData.district_id) : '',
-        block_id: surveyData.block_id ? String(surveyData.block_id) : ''
+        block_id: surveyData.block_id ? String(surveyData.block_id) : '',
+        beel_images: surveyData.beel_images || [],
+        image_lat: surveyData.image_lat || '',
+        image_lng: surveyData.image_lng || ''
       };
       setFormData(editData);
     }
@@ -85,16 +144,8 @@ const SurveyFormScreen = ({ route, navigation }) => {
   const validationRules = {
     year: { required: true, message: 'Year is required' },
     beel_name: { required: true, message: 'Beel name is required' },
-    district_id: { 
-      required: true, 
-      numeric: true,
-      message: 'District ID is required and must be a number' 
-    },
-    block_id: { 
-      required: true, 
-      numeric: true,
-      message: 'Block ID is required and must be a number' 
-    },
+    district_id: { required: true, message: 'District is required' },
+    block_id: { required: true, message: 'Block is required' },
     land_area: { numeric: true, message: 'Must be a number' },
     water_depth_monsoon: { numeric: true, message: 'Must be a number' },
     water_depth_summer: { numeric: true, message: 'Must be a number' },
@@ -110,7 +161,7 @@ const SurveyFormScreen = ({ route, navigation }) => {
     }
   };
 
-  const validateField = (name, value) => {
+  const validateField = useCallback((name, value) => {
     const rules = validationRules[name];
     if (!rules) return null;
 
@@ -118,7 +169,7 @@ const SurveyFormScreen = ({ route, navigation }) => {
       return rules.message;
     }
 
-    if (rules.numeric && value && isNaN(value)) {
+    if (rules.numeric && value && isNaN(Number(value))) {
       return 'Must be a number';
     }
 
@@ -131,9 +182,9 @@ const SurveyFormScreen = ({ route, navigation }) => {
     }
 
     return null;
-  };
+  }, []);
 
-  const validatePhase = (phase) => {
+  const validatePhase = useCallback((phase) => {
     const newErrors = {};
     let isValid = true;
 
@@ -149,9 +200,9 @@ const SurveyFormScreen = ({ route, navigation }) => {
 
     setErrors(newErrors);
     return isValid;
-  };
+  }, [formData, validateField]);
 
-  const shouldValidateInPhase = (field, phase) => {
+  const shouldValidateInPhase = useCallback((field, phase) => {
     const phaseFields = {
       1: ['year', 'beel_name', 'district_id', 'block_id', 'lac', 'gp', 'village', 'mauza', 'po'],
       2: ['land_area', 'water_depth_monsoon', 'water_depth_summer', 'lat', 'lng', 'distance_hq', 'distance_market', 'road_accessibility'],
@@ -159,7 +210,7 @@ const SurveyFormScreen = ({ route, navigation }) => {
       4: ['type_aquatic', 'aquatic_name', 'no_village', 'no_household', 'percentage_sc', 'percentage_st', 'name_beel_managment_committee', 'nos_active_fishermen', 'name_contact', 'mobile_contact']
     };
     return phaseFields[phase].includes(field);
-  };
+  }, []);
 
   const handleSubmit = async () => {
     for (let phase = 1; phase <= 4; phase++) {
@@ -176,16 +227,27 @@ const SurveyFormScreen = ({ route, navigation }) => {
 
     setLoading(true);
     try {
+      const numericFields = [
+        'land_area', 'water_depth_monsoon', 
+        'water_depth_summer', 'distance_hq', 'no_village', 'no_household',
+        'nos_active_fishermen'
+      ];
+      const submitData = {
+        ...formData,
+        ...Object.fromEntries(
+          numericFields.map(field => [field, formData[field] ? Number(formData[field]) : ''])
+        )
+      };
       let response;
       if (isEdit) {
-        response = await updateSurvey({ ...formData, id: surveyData.id }, token);
+        response = await updateSurvey({ ...submitData, id: surveyData.id }, token);
         Alert.alert(
           'Success', 
           'Survey updated successfully!',
           [{ text: 'OK', onPress: () => navigation.goBack() }]
         );
       } else {
-        response = await submitSurvey(formData, token);
+        response = await submitSurvey(submitData, token);
         Alert.alert(
           'Success', 
           'Survey submitted successfully!',
@@ -202,32 +264,62 @@ const SurveyFormScreen = ({ route, navigation }) => {
     }
   };
 
-  const handleChange = (name, value) => {
-    const numericFields = [
-      'district_id', 'block_id', 'land_area', 'water_depth_monsoon', 
-      'water_depth_summer', 'distance_hq', 'no_village', 'no_household',
-      'nos_active_fishermen'
-    ];
-    
+  const handleChange = useCallback((name, value) => {
     if (name === 'mobile_contact' && value.length > 10) {
       return;
     }
 
     setFormData(prev => ({
       ...prev,
-      [name]: numericFields.includes(name) ? (value === '' ? '' : Number(value)) : value
+      [name]: value
     }));
 
     if (errors[name]) {
       setErrors(prev => {
-        const newErrors = {...prev};
+        const newErrors = { ...prev };
         delete newErrors[name];
         return newErrors;
       });
     }
-  };
+  }, [errors]);
 
-  const nextPhase = () => {
+  const handleDistrictChange = useCallback((value) => {
+    const districtBlocks = allBlocks.filter(
+      b => b.district_id.toString() === value.toString()
+    );
+    setBlocks(districtBlocks);
+    
+    setFormData(prev => ({
+      ...prev,
+      district_id: value,
+      block_id: ''
+    }));
+
+    if (errors.district_id) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.district_id;
+        return newErrors;
+      });
+    }
+  }, [allBlocks, errors.district_id]);
+
+  const handleBlockChange = useCallback((value) => {
+    setFormData(prev => ({
+      ...prev,
+      block_id: value
+    }));
+
+    if (errors.block_id) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.block_id;
+        return newErrors;
+      });
+    }
+  }, [errors.block_id]);
+
+  const nextPhase = useCallback(() => {
     if (!validatePhase(currentPhase)) {
       Alert.alert(
         'Validation Error',
@@ -240,19 +332,160 @@ const SurveyFormScreen = ({ route, navigation }) => {
     if (currentPhase < 4) {
       setCurrentPhase(currentPhase + 1);
     }
-  };
+  }, [currentPhase, validatePhase]);
 
-  const prevPhase = () => {
+  const prevPhase = useCallback(() => {
     if (currentPhase > 1) {
       setCurrentPhase(currentPhase - 1);
     }
+  }, [currentPhase]);
+
+  const requestCameraPermission = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          {
+            title: "Camera Permission",
+            message: "App needs access to your camera",
+            buttonNeutral: "Ask Me Later",
+            buttonNegative: "Cancel",
+            buttonPositive: "OK"
+          }
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn(err);
+        return false;
+      }
+    }
+    return true;
   };
 
-  const renderValidationGuidance = () => (
+  const requestLocationPermission = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: "Location Permission",
+            message: "App needs access to your location",
+            buttonNeutral: "Ask Me Later",
+            buttonNegative: "Cancel",
+            buttonPositive: "OK"
+          }
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn(err);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const captureImage = async () => {
+  try {
+    // 1. Request camera permissions
+    const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+    if (cameraStatus !== 'granted') {
+      Alert.alert('Permission required', 'Camera access is needed to take photos');
+      return;
+    }
+
+    // 2. Request location permissions (optional)
+    let hasLocationPermission = false;
+    try {
+      const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
+      hasLocationPermission = locationStatus === 'granted';
+    } catch (locationError) {
+      console.warn('Location permission error:', locationError);
+    }
+
+    // 3. Launch camera with updated MediaType
+const result = await ImagePicker.launchCameraAsync({
+mediaTypes: ImagePicker.MediaType.IMAGE,
+  quality: 0.8,
+  allowsEditing: false,
+  exif: true,
+});
+
+    if (result.canceled) {
+      console.log('User cancelled image capture');
+      return;
+    }
+
+    if (result.assets && result.assets.length > 0) {
+      const { uri } = result.assets[0];
+      setUploadingImage(true);
+
+      try {
+        // 4. Get location if permission granted
+        let latitude = '';
+        let longitude = '';
+
+        if (hasLocationPermission) {
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.BestForNavigation,
+          });
+          latitude = location.coords.latitude.toString();
+          longitude = location.coords.longitude.toString();
+        }
+
+        // 5. Upload image (replace with your API implementation)
+        const imageUrl = await uploadImage(uri, token);
+
+        // 6. Update form data
+        setFormData(prev => ({
+          ...prev,
+          beel_images: [...prev.beel_images, imageUrl],
+          image_lat: latitude,
+          image_lng: longitude,
+        }));
+
+        Alert.alert('Success', `Image uploaded${latitude ? ' with location' : ''}`);
+      } catch (error) {
+        console.error('Upload error:', error);
+        Alert.alert('Error', 'Failed to process image');
+      } finally {
+        setUploadingImage(false);
+      }
+    }
+  } catch (error) {
+    console.error('Camera error:', error);
+    setUploadingImage(false);
+    Alert.alert('Error', 'Failed to access camera');
+  }
+};
+
+  const removeImage = (index) => {
+    const newImages = [...formData.beel_images];
+    newImages.splice(index, 1);
+    setFormData(prev => ({
+      ...prev,
+      beel_images: newImages
+    }));
+  };
+
+  const handleDistanceUpdate = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+
+    if (errors[field]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+  };
+
+  const renderValidationGuidance = useCallback(() => (
     <View style={styles.guidanceContainer}>
       <Text style={styles.guidanceTitle}>Validation Rules:</Text>
       <Text style={styles.guidanceText}>- Fields marked with * are required</Text>
-      <Text style={styles.guidanceText}>- District ID and Block ID must be numbers</Text>
       <Text style={styles.guidanceText}>- Land area, water depth, and distance fields must be numbers</Text>
       <Text style={styles.guidanceText}>- Mobile number must contain only digits (max 10)</Text>
       {Object.keys(errors).length > 0 && (
@@ -261,10 +494,93 @@ const SurveyFormScreen = ({ route, navigation }) => {
         </Text>
       )}
     </View>
+  ), [errors]);
+
+  const renderDropdown = ({ label, value, onChange, options, error, loading }) => (
+    <View style={styles.inputGroup}>
+      <View style={styles.labelContainer}>
+        <Text style={styles.label}>{label}</Text>
+        {error && <Text style={styles.errorHint}>!</Text>}
+      </View>
+      
+      {loading ? (
+        <ActivityIndicator size="small" color="#3498db" />
+      ) : (
+        <Dropdown
+          style={[styles.dropdown, isFocus && { borderColor: 'blue' }, error && styles.errorInput]}
+          placeholderStyle={styles.placeholderStyle}
+          selectedTextStyle={styles.selectedTextStyle}
+          inputSearchStyle={styles.inputSearchStyle}
+          iconStyle={styles.iconStyle}
+          data={options}
+          search
+          maxHeight={300}
+          labelField="name"
+          valueField="id"
+          placeholder={!isFocus ? `Select ${label}` : '...'}
+          searchPlaceholder="Search..."
+          value={value}
+          onFocus={() => setIsFocus(true)}
+          onBlur={() => setIsFocus(false)}
+          onChange={item => {
+            onChange(item.id);
+            setIsFocus(false);
+          }}
+          renderLeftIcon={() => (
+            <View style={styles.dropdownIcon}>
+              <Text>📌</Text>
+            </View>
+          )}
+        />
+      )}
+      
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+    </View>
   );
 
-  const renderPhase = () => {
-    switch(currentPhase) {
+  const renderImageGallery = () => (
+    <View style={styles.imageGalleryContainer}>
+      <Text style={styles.sectionTitle}>Beel Images</Text>
+      <View style={styles.imageGallery}>
+        {formData.beel_images.map((image, index) => (
+          <View key={index} style={styles.imageContainer}>
+            <Image source={{ uri: image }} style={styles.image} />
+            <TouchableOpacity 
+              style={styles.removeImageButton} 
+              onPress={() => removeImage(index)}
+            >
+              <Text style={styles.removeImageText}>×</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        <TouchableOpacity 
+          style={styles.addImageButton} 
+          onPress={captureImage}
+          disabled={uploadingImage}
+        >
+          {uploadingImage ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.addImageText}>+ Add Photo</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+      {formData.image_lat && formData.image_lng && (
+        <View style={styles.locationInfo}>
+          <Text style={styles.locationText}>
+            Last image location: {parseFloat(formData.image_lat).toFixed(6)}, {parseFloat(formData.image_lng).toFixed(6)}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderPhase = useCallback(() => {
+    switch (currentPhase) {
       case 1:
         return (
           <>
@@ -282,20 +598,22 @@ const SurveyFormScreen = ({ route, navigation }) => {
               onChangeText={text => handleChange('beel_name', text)}
               error={errors.beel_name}
             />
-            <Field 
-              label="District ID *" 
-              value={formData.district_id} 
-              onChangeText={text => handleChange('district_id', text)} 
-              keyboardType="numeric" 
-              error={errors.district_id}
-            />
-            <Field 
-              label="Block ID *" 
-              value={formData.block_id} 
-              onChangeText={text => handleChange('block_id', text)} 
-              keyboardType="numeric" 
-              error={errors.block_id}
-            />
+            {renderDropdown({
+              label: "District *",
+              value: formData.district_id,
+              onChange: handleDistrictChange,
+              options: districts,
+              error: errors.district_id,
+              loading: loadingMasterData
+            })}
+            {renderDropdown({
+              label: "Block *",
+              value: formData.block_id,
+              onChange: handleBlockChange,
+              options: blocks,
+              error: errors.block_id,
+              loading: loadingMasterData
+            })}
             <Field 
               label="LAC" 
               value={formData.lac} 
@@ -328,6 +646,7 @@ const SurveyFormScreen = ({ route, navigation }) => {
           <>
             <Text style={styles.phaseTitle}>Phase 2: Location & Land Information</Text>
             {renderValidationGuidance()}
+            {renderImageGallery()}
             <Field 
               label="Land Area (ha)" 
               value={formData.land_area} 
@@ -368,6 +687,30 @@ const SurveyFormScreen = ({ route, navigation }) => {
               keyboardType="numeric"
               error={errors.distance_hq}
             />
+            <TouchableOpacity 
+              style={styles.geofencingButton}
+              onPress={() => setShowGeofencing(!showGeofencing)}
+            >
+              <Text style={styles.geofencingButtonText}>
+                {showGeofencing ? '📍 Hide Distance Tool' : '🗺️ Use Map Distance Tool'}
+              </Text>
+            </TouchableOpacity>
+            
+            {showGeofencing && (
+              <View style={styles.mapContainer}>
+                <GeofencingMap
+                  beelLocation={{
+                    lat: formData.image_lat || formData.lat,
+                    lng: formData.image_lng || formData.lng
+                  }}
+                  onDistanceUpdate={handleDistanceUpdate}
+                  initialHqDistance={formData.distance_hq}
+                  initialMarketDistance={formData.distance_market}
+                  isVisible={showGeofencing}
+                />
+              </View>
+            )}
+            
             <Field 
               label="Distance to Market (km)" 
               value={formData.distance_market} 
@@ -512,7 +855,44 @@ const SurveyFormScreen = ({ route, navigation }) => {
       default:
         return null;
     }
-  };
+  }, [currentPhase, errors, formData, blocks, districts, loadingMasterData, 
+      handleChange, handleDistrictChange, handleBlockChange, renderValidationGuidance]);
+
+  const Field = React.memo(({ 
+    label, 
+    value, 
+    onChangeText, 
+    editable = true, 
+    keyboardType = 'default', 
+    error,
+    maxLength
+  }) => (
+    <View style={styles.inputGroup}>
+      <View style={styles.labelContainer}>
+        <Text style={styles.label}>{label}</Text>
+        {error && <Text style={styles.errorHint}>!</Text>}
+      </View>
+      
+      <TextInput
+        style={[styles.input, !editable && styles.disabledInput, error && styles.errorInput]}
+        value={value}
+        onChangeText={onChangeText}
+        editable={editable}
+        keyboardType={keyboardType}
+        placeholder={`Enter ${label.replace('*', '').trim()}`}
+        placeholderTextColor="#999"
+        maxLength={maxLength}
+        autoCorrect={false}
+        autoCapitalize="none"
+      />
+      
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+    </View>
+  ));
 
   return (
     <SafeAreaView style={styles.container}>
@@ -527,87 +907,57 @@ const SurveyFormScreen = ({ route, navigation }) => {
         <View style={styles.headerRight} />
       </View>
 
-      <ScrollView 
-        style={styles.content}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
       >
-        {renderPhase()}
-        
-        <View style={styles.navigationButtons}>
-          {currentPhase > 1 && (
-            <TouchableOpacity 
-              style={[styles.navButton, styles.prevButton]} 
-              onPress={prevPhase}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.buttonText}>Previous</Text>
-            </TouchableOpacity>
-          )}
+        <ScrollView 
+          style={styles.content}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {renderPhase()}
           
-          {currentPhase < 4 ? (
-            <TouchableOpacity 
-              style={[styles.navButton, styles.nextButton]} 
-              onPress={nextPhase}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.buttonText}>Next</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={styles.submitButton} 
-              onPress={handleSubmit}
-              disabled={loading}
-              activeOpacity={0.7}
-            >
-              {loading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text style={styles.submitButtonText}>{isEdit ? 'Update Survey' : 'Submit Survey'}</Text>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
+          <View style={styles.navigationButtons}>
+            {currentPhase > 1 && (
+              <TouchableOpacity 
+                style={[styles.navButton, styles.prevButton]} 
+                onPress={prevPhase}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.buttonText}>Previous</Text>
+              </TouchableOpacity>
+            )}
+            
+            {currentPhase < 4 ? (
+              <TouchableOpacity 
+                style={[styles.navButton, styles.nextButton]} 
+                onPress={nextPhase}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.buttonText}>Next</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={styles.submitButton} 
+                onPress={handleSubmit}
+                disabled={loading}
+                activeOpacity={0.7}
+              >
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.submitButtonText}>{isEdit ? 'Update Survey' : 'Submit Survey'}</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
-
-const Field = ({ 
-  label, 
-  value, 
-  onChangeText, 
-  editable = true, 
-  keyboardType = 'default', 
-  error,
-  maxLength
-}) => (
-  <View style={styles.inputGroup}>
-    <View style={styles.labelContainer}>
-      <Text style={styles.label}>{label}</Text>
-      {error && <Text style={styles.errorHint}>!</Text>}
-    </View>
-    <TextInput
-      style={[
-        styles.input, 
-        !editable && styles.disabledInput,
-        error && styles.errorInput
-      ]}
-      value={value}
-      onChangeText={onChangeText}
-      editable={editable}
-      keyboardType={keyboardType}
-      placeholder={`Enter ${label.replace('*', '').trim()}`}
-      placeholderTextColor="#999"
-      maxLength={maxLength}
-    />
-    {error && (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
-    )}
-  </View>
-);
 
 const styles = StyleSheet.create({
   container: {
@@ -751,8 +1101,8 @@ const styles = StyleSheet.create({
   navButton: {
     paddingVertical: isSmallDevice ? 12 : 15,
     borderRadius: 6,
-    alignItems:'center',
-    minWidth:'48%', 
+    alignItems: 'center',
+    minWidth: '48%',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -776,7 +1126,7 @@ const styles = StyleSheet.create({
     paddingVertical: isSmallDevice ? 12 : 15,
     borderRadius: 6,
     alignItems: 'center',
-    minWidth: '48%', 
+    minWidth: '48%',
     marginTop: 10,
     marginBottom: 20,
     ...Platform.select({
@@ -800,6 +1150,145 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: isSmallDevice ? 15 : 16,
     fontWeight: '500',
+  },
+  dropdown: {
+    height: 50,
+    borderColor: '#ddd',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    backgroundColor: 'white',
+  },
+  placeholderStyle: {
+    fontSize: isSmallDevice ? 14 : 16,
+    color: '#999',
+  },
+  selectedTextStyle: {
+    fontSize: isSmallDevice ? 14 : 16,
+    color: '#333',
+  },
+  inputSearchStyle: {
+    height: 40,
+    fontSize: isSmallDevice ? 14 : 16,
+    color: '#333',
+  },
+  iconStyle: {
+    width: 20,
+    height: 20,
+  },
+  dropdownIcon: {
+    marginRight: 10,
+  },
+  // Image gallery styles
+  imageGalleryContainer: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: isSmallDevice ? 14 : 16,
+    fontWeight: '600',
+    marginBottom: 10,
+    color: '#2c3e50',
+  },
+  imageGallery: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 15,
+  },
+  imageContainer: {
+    position: 'relative',
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeImageText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  addImageButton: {
+    width: 100,
+    height: 100,
+    backgroundColor: '#3498db',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addImageText: {
+    color: 'white',
+    fontSize: isSmallDevice ? 12 : 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  locationInfo: {
+    backgroundColor: '#f0f8ff',
+    padding: 10,
+    borderRadius: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3498db',
+  },
+  locationText: {
+    fontSize: isSmallDevice ? 12 : 13,
+    color: '#2c3e50',
+  },
+  geofencingButton: {
+    backgroundColor: '#3498db',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 15,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  geofencingButtonText: {
+    color: 'white',
+    fontSize: isSmallDevice ? 14 : 16,
+    fontWeight: '500',
+  },
+  mapContainer: {
+    marginBottom: 20,
+    borderRadius: 8,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
 });
 
