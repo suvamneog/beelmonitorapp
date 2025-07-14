@@ -346,26 +346,52 @@ export const updateSurvey = async (surveyData, token) => {
   }
 };
 
-export const uploadImage = async (uri, name, type, token) => {
-  const formData = new FormData();
-  formData.append('image', {
-    uri,
-    name,
-    type: type || 'image/jpeg'
-  });
+export const uploadBeelPhoto = async (formData, token) => {
+  try {
+    // Log the FormData contents for debugging
+    console.log('Uploading FormData with entries:');
+    for (let [key, value] of formData.entries()) {
+      console.log(`${key}:`, value);
+    }
 
-  const response = await fetch(`${API_URL}/upload`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'multipart/form-data'
-    },
-    body: formData
-  });
+    const response = await fetch(`${BASE_URL}/beelphotos`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData
+    });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'Failed to upload image');
+    const text = await response.text();
+    let responseData;
+    
+    try {
+      responseData = text ? JSON.parse(text) : {};
+    } catch (e) {
+      console.error('Failed to parse response:', text);
+      throw new Error('Invalid server response');
+    }
+
+    console.log('Upload response:', responseData);
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to upload image';
+      
+      if (responseData.errors) {
+        errorMessage = Object.entries(responseData.errors)
+          .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+          .join('\n');
+      } else if (responseData.message) {
+        errorMessage = responseData.message;
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    return responseData;
+  } catch (error) {
+    console.error('Image upload error:', error);
+    throw error;
   }
-  return data.url; 
 };

@@ -57,6 +57,11 @@ const GeofencingMap = ({
         latitude: parseFloat(beelLocation.lat), 
         longitude: parseFloat(beelLocation.lng) 
       };
+       if (!beelLocation || (!beelLocation.lat && !beelLocation.lng)) {
+    Alert.alert('Location Required', 'Please set a beel location first');
+    return;
+  }
+  
       setMarkers(prev => ({ ...prev, beel: beelPos }));
       setRegion({
         latitude: beelPos.latitude,

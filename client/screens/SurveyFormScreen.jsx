@@ -16,10 +16,15 @@ import {
   PermissionsAndroid
 } from 'react-native';
 import { Dropdown } from 'react-native-element-dropdown';
-import { submitSurvey, updateSurvey, getMasterData, uploadImage } from '../utils/api';
+import { 
+  submitSurvey, 
+  updateSurvey, 
+  getMasterData, 
+  uploadBeelPhoto  
+} from '../utils/api';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import GeofencingMap from '../components/GeofencingMap';
+import GeofencingMap from "../components/GeofencingMap";
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = width < 375;
@@ -384,7 +389,7 @@ const SurveyFormScreen = ({ route, navigation }) => {
     return true;
   };
 
-  const captureImage = async () => {
+const captureImage = async () => {
   try {
     // 1. Request camera permissions
     const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
@@ -393,60 +398,125 @@ const SurveyFormScreen = ({ route, navigation }) => {
       return;
     }
 
-    // 2. Request location permissions (optional)
-    let hasLocationPermission = false;
+    // 2. Request location permissions
+    let lat = null;
+    let lng = null;
+    
     try {
       const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
-      hasLocationPermission = locationStatus === 'granted';
+      if (locationStatus === 'granted') {
+        console.log('Getting current location...');
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeout: 10000,
+          maximumAge: 60000,
+        });
+        
+        if (location?.coords?.latitude && location?.coords?.longitude) {
+          lat = location.coords.latitude;
+          lng = location.coords.longitude;
+          console.log('Location obtained:', { lat, lng });
+        } else {
+          console.warn('Location coords not available');
+        }
+      } else {
+        console.warn('Location permission denied');
+      }
     } catch (locationError) {
-      console.warn('Location permission error:', locationError);
+      console.warn('Location error:', locationError.message);
+      Alert.alert('Location Warning', 'Could not get current location. Photo will be uploaded without location data.');
     }
 
-    // 3. Launch camera with updated MediaType
-const result = await ImagePicker.launchCameraAsync({
-mediaTypes: ImagePicker.MediaType.IMAGE,
-  quality: 0.8,
-  allowsEditing: false,
-  exif: true,
-});
+    // 3. Launch camera
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
+      allowsEditing: false,
+      exif: true,
+    });
 
-    if (result.canceled) {
-      console.log('User cancelled image capture');
-      return;
-    }
+    if (result.canceled) return;
 
     if (result.assets && result.assets.length > 0) {
       const { uri } = result.assets[0];
       setUploadingImage(true);
 
       try {
-        // 4. Get location if permission granted
-        let latitude = '';
-        let longitude = '';
+        const formData = new FormData();
+        // Use existing beel ID if editing, otherwise use 0 for new surveys
+        const beelId = isEdit && surveyData?.id ? parseInt(surveyData.id) : 0;
 
-        if (hasLocationPermission) {
-          const location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.BestForNavigation,
-          });
-          latitude = location.coords.latitude.toString();
-          longitude = location.coords.longitude.toString();
+        formData.append('s_beel_id', beelId);
+        formData.append('title', 'Beel Photo');
+        formData.append('photo[]', {
+          uri,
+          name: `photo_${Date.now()}.jpg`,
+          type: 'image/jpeg'
+        });
+
+        // Always add latitude and longitude (required by API)
+        // Use actual coordinates if available, otherwise use default values
+        const latitude = (lat !== null && !isNaN(lat)) ? lat.toString() : '0';
+        const longitude = (lng !== null && !isNaN(lng)) ? lng.toString() : '0';
+        
+        formData.append('latitude', latitude);
+        formData.append('longitude', longitude);
+        
+        if (lat !== null && lng !== null) {
+          console.log('Location data attached to upload:', { lat, lng });
+        } else {
+          console.log('Using default location values (0, 0) as location was not available');
         }
 
-        // 5. Upload image (replace with your API implementation)
-        const imageUrl = await uploadImage(uri, token);
 
-        // 6. Update form data
-        setFormData(prev => ({
-          ...prev,
-          beel_images: [...prev.beel_images, imageUrl],
-          image_lat: latitude,
-          image_lng: longitude,
-        }));
+        // Upload image
+        const response = await uploadBeelPhoto(formData, token);
+        console.log('Full upload response:', response);
 
-        Alert.alert('Success', `Image uploaded${latitude ? ' with location' : ''}`);
+        // Update form data with the new image and location
+        if (response && response.status && response.data && response.data.length > 0) {
+          const uploadedImages = response.data;
+          const newImageUrls = uploadedImages.map(img => img.photo);
+          
+          setFormData(prev => ({
+            ...prev,
+            beel_images: [...prev.beel_images, ...newImageUrls],
+            image_lat: lat !== null ? lat.toString() : prev.image_lat,
+            image_lng: lng !== null ? lng.toString() : prev.image_lng,
+            // Auto-populate main lat/lng fields if they're empty and we have valid coordinates
+            lat: (lat !== null && (!prev.lat || prev.lat === '')) ? lat.toString() : prev.lat,
+            lng: (lng !== null && (!prev.lng || prev.lng === '')) ? lng.toString() : prev.lng
+          }));
+          
+          const locationMessage = lat !== null && lng !== null 
+            ? `Image uploaded successfully with location (${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}). Main lat/lng fields updated automatically.`
+            : 'Image uploaded successfully (no location data)';
+          Alert.alert('Success', locationMessage);
+        } else if (response && response.status) {
+          // Handle case where upload was successful but no data array returned
+          // Still update main lat/lng fields if we have coordinates
+          if (lat !== null && lng !== null) {
+            setFormData(prev => ({
+              ...prev,
+              image_lat: lat.toString(),
+              image_lng: lng.toString(),
+              // Auto-populate main lat/lng fields if they're empty
+              lat: (!prev.lat || prev.lat === '') ? lat.toString() : prev.lat,
+              lng: (!prev.lng || prev.lng === '') ? lng.toString() : prev.lng
+            }));
+          }
+          
+          const locationMessage = lat !== null && lng !== null 
+            ? `Image uploaded successfully with location (${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}). Main lat/lng fields updated automatically.`
+            : 'Image uploaded successfully (no location data)';
+          Alert.alert('Success', locationMessage);
+        } else {
+          console.warn('Unexpected response structure:', response);
+          Alert.alert('Success', 'Image uploaded successfully');
+        }
+
       } catch (error) {
         console.error('Upload error:', error);
-        Alert.alert('Error', 'Failed to process image');
+        Alert.alert('Error', error.message || 'Failed to upload image');
       } finally {
         setUploadingImage(false);
       }
@@ -454,7 +524,7 @@ mediaTypes: ImagePicker.MediaType.IMAGE,
   } catch (error) {
     console.error('Camera error:', error);
     setUploadingImage(false);
-    Alert.alert('Error', 'Failed to access camera');
+    Alert.alert('Error', 'Failed to access camera: ' + error.message);
   }
 };
 
