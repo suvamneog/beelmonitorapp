@@ -10,6 +10,7 @@ import ChangePasswordScreen from './screens/changepassword';
 import AddBeelScreen from './screens/AddBeel';
 import SurveyFormScreen from './screens/SurveyFormScreen';
 import SurveyDetailsScreen from './screens/SurveyDetailsScreen';
+import DistanceToolScreen from './screens/DistanceToolScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -125,6 +126,13 @@ export default function App() {
     },
   }}
 />
+        <Stack.Screen 
+          name="DistanceTool" 
+          component={DistanceToolScreen} 
+          options={{ 
+            headerShown: false
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -11,7 +11,7 @@ import {
   Alert
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { getAllSurveys, deleteSurvey } from '../utils/api';
+import { getAllSurveys } from '../utils/api';
 
 const SurveyDetailsScreen = () => {
   const route = useRoute();
@@ -64,48 +64,6 @@ const SurveyDetailsScreen = () => {
       surveyData: survey,
       isEdit: true
     });
-  };
-
-  const handleDelete = async () => {
-    const surveyToDelete = surveys[currentIndex];
-    if (!surveyToDelete?.id) {
-      Alert.alert('Error', 'No survey selected for deletion');
-      return;
-    }
-
-    Alert.alert(
-      'Confirm Delete',
-      'Are you sure you want to delete this survey?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              await deleteSurvey(surveyToDelete.id, token);
-              
-              const updatedSurveys = surveys.filter(s => s.id !== surveyToDelete.id);
-              setSurveys(updatedSurveys);
-              
-              if (updatedSurveys.length === 0) {
-                navigation.goBack();
-              } else {
-                setCurrentIndex(Math.min(currentIndex, updatedSurveys.length - 1));
-              }
-              
-              Alert.alert('Success', 'Survey deleted successfully');
-            } catch (err) {
-              console.error('Delete error:', err);
-              Alert.alert('Error', err.message || 'Failed to delete survey');
-            } finally {
-              setLoading(false);
-            }
-          }
-        }
-      ]
-    );
   };
 
   const openMap = (lat, lng) => {
@@ -258,18 +216,6 @@ const SurveyDetailsScreen = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={handleDelete}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text style={styles.buttonText}>Delete</Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
           style={[styles.navButton, currentIndex === surveys.length - 1 && styles.disabled]}
           onPress={handleNext}
           disabled={currentIndex === surveys.length - 1}
@@ -358,15 +304,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#3498db',
     padding: 12,
     borderRadius: 6,
-    minWidth: 100,
+    flex: 1,
     alignItems: 'center',
-  },
-  deleteButton: {
-    backgroundColor: '#e74c3c',
-    padding: 12,
-    borderRadius: 6,
-    minWidth: 100,
-    alignItems: 'center',
+    marginHorizontal: 5,
   },
   disabled: {
     backgroundColor: '#95a5a6',

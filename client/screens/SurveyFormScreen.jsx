@@ -26,7 +26,6 @@ import {
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert as RNAlert } from 'react-native';
-import GeofencingMapModal from "../components/GeofencingMap";
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = width < 375;
@@ -136,7 +135,6 @@ const SurveyFormScreen = ({ route, navigation }) => {
   const [allBlocks, setAllBlocks] = useState([]);
   const [loadingMasterData, setLoadingMasterData] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [mapModalVisible, setMapModalVisible] = useState(false);
 
   useEffect(() => {
     const fetchMasterData = async () => {
@@ -625,6 +623,17 @@ const captureImage = async () => {
     }
   };
 
+  const openDistanceTool = () => {
+    navigation.navigate('DistanceTool', {
+      beelLocation: {
+        lat: formData.image_lat || formData.lat || '26.123456',
+        lng: formData.image_lng || formData.lng || '92.987654'
+      },
+      initialHqDistance: formData.distance_hq,
+      initialMarketDistance: formData.distance_market,
+      onDistanceUpdate: handleDistanceUpdate
+    });
+  };
   const renderValidationGuidance = useCallback(() => (
     <View style={styles.guidanceContainer}>
       <Text style={styles.guidanceTitle}>Validation Rules:</Text>
@@ -832,25 +841,12 @@ const captureImage = async () => {
             />
             <TouchableOpacity 
               style={styles.geofencingButton}
-              onPress={() => setMapModalVisible(true)}
-      
+              onPress={openDistanceTool}
             >
               <Text style={styles.geofencingButtonText}>
                 🗺️ Use Map Distance Tool
               </Text>
             </TouchableOpacity>
-            
-            <GeofencingMapModal
-              visible={mapModalVisible}
-              onClose={() => setMapModalVisible(false)}
-              beelLocation={{
-                lat: formData.image_lat || formData.lat || '22.5726',
-                lng: formData.image_lng || formData.lng || '88.3639'
-              }}
-              onDistanceUpdate={handleDistanceUpdate}
-              initialHqDistance={formData.distance_hq}
-              initialMarketDistance={formData.distance_market}
-            />
             
             <Field 
               label="Distance to Market (km)" 
