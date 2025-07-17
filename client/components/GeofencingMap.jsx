@@ -6,9 +6,12 @@ import {
   StyleSheet,
   Alert,
   Dimensions,
-  Platform
+  Platform,
+  ActivityIndicator,
+  Modal,
+  SafeAreaView
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, UrlTile } from 'react-native-maps';
 import * as Location from 'expo-location';
 
 const { width, height } = Dimensions.get('window');
@@ -27,12 +30,13 @@ const calculateDistance = (lat1, lng1, lat2, lng2) => {
   return R * c;
 };
 
-const GeofencingMap = ({ 
+const GeofencingMapModal = ({ 
+  visible,
+  onClose,
   beelLocation, 
   onDistanceUpdate, 
   initialHqDistance, 
-  initialMarketDistance,
-  isVisible 
+  initialMarketDistance
 }) => {
   const [markers, setMarkers] = useState({
     beel: null,
@@ -45,64 +49,89 @@ const GeofencingMap = ({
     market: initialMarketDistance || ''
   });
   const [region, setRegion] = useState({
-    latitude: 22.5726,
+    latitude: 22.5726, // Default to West Bengal center
     longitude: 88.3639,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
+  const [mapReady, setMapReady] = useState(false);
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
   useEffect(() => {
-    if (beelLocation && beelLocation.lat && beelLocation.lng) {
-      const beelPos = { 
-        latitude: parseFloat(beelLocation.lat), 
-        longitude: parseFloat(beelLocation.lng) 
-      };
-       if (!beelLocation || (!beelLocation.lat && !beelLocation.lng)) {
-    Alert.alert('Location Required', 'Please set a beel location first');
-    return;
-  }
-  
-      setMarkers(prev => ({ ...prev, beel: beelPos }));
-      setRegion({
-        latitude: beelPos.latitude,
-        longitude: beelPos.longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      });
+    if (visible && beelLocation && (beelLocation.lat || beelLocation.lng)) {
+      const lat = parseFloat(beelLocation.lat) || 0;
+      const lng = parseFloat(beelLocation.lng) || 0;
+ 
+      if (lat !== 0 && lng !== 0) {
+        const beelPos = { latitude: lat, longitude: lng };
+        setMarkers(prev => ({ ...prev, beel: beelPos }));
+        setRegion({
+          latitude: lat,
+          longitude: lng,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        });
+      }
     }
-  }, [beelLocation]);
+  }, [visible, beelLocation]);
+
+  // Initialize existing HQ and Market markers if distances are provided
+  useEffect(() => {
+    if (visible) {
+      if (initialHqDistance) {
+        setDistances(prev => ({ ...prev, hq: initialHqDistance }));
+      }
+           console.log('GeofencingMapModal visible:', visible);
+      if (initialMarketDistance) {
+        setDistances(prev => ({ ...prev, market: initialMarketDistance }));
+      }
+    }
+  }, [visible, initialHqDistance, initialMarketDistance]);
 
   const handleMapPress = (event) => {
-    if (mode === 'view') return;
+    if (mode === 'view' || !mapReady) return;
     
-    if (!markers.beel) {
-      Alert.alert('Error', 'Please set beel location first by uploading an image with location data');
-      return;
-    }
-
     const { latitude, longitude } = event.nativeEvent.coordinate;
     const newMarkers = { ...markers };
     
     if (mode === 'hq') {
       newMarkers.hq = { latitude, longitude };
-      const distance = calculateDistance(
-        markers.beel.latitude, markers.beel.longitude,
-        latitude, longitude
-      );
+      let distance = 0;
+      if (markers.beel && markers.beel.latitude !== 0 && markers.beel.longitude !== 0) {
+        distance = calculateDistance(
+          markers.beel.latitude, markers.beel.longitude,
+          latitude, longitude
+        );
+      }
       const newDistances = { ...distances, hq: distance.toFixed(2) };
       setDistances(newDistances);
       onDistanceUpdate('distance_hq', distance.toFixed(2));
-      Alert.alert('Success', `HQ location set. Distance: ${distance.toFixed(2)} km`);
+      Alert.alert(
+        'HQ Location Set', 
+        markers.beel && markers.beel.latitude !== 0 && markers.beel.longitude !== 0 
+          ? `Distance from beel to HQ: ${distance.toFixed(2)} km`
+          : 'HQ location set. Upload image with GPS data to calculate distance.',
+        [{ text: 'OK' }]
+      );
     } else if (mode === 'market') {
       newMarkers.market = { latitude, longitude };
-      const distance = calculateDistance(
-        markers.beel.latitude, markers.beel.longitude,
-        latitude, longitude
-      );
+      let distance = 0;
+      if (markers.beel && markers.beel.latitude !== 0 && markers.beel.longitude !== 0) {
+        distance = calculateDistance(
+          markers.beel.latitude, markers.beel.longitude,
+          latitude, longitude
+        );
+      }
       const newDistances = { ...distances, market: distance.toFixed(2) };
       setDistances(newDistances);
       onDistanceUpdate('distance_market', distance.toFixed(2));
-      Alert.alert('Success', `Market location set. Distance: ${distance.toFixed(2)} km`);
+      Alert.alert(
+        'Market Location Set', 
+        markers.beel && markers.beel.latitude !== 0 && markers.beel.longitude !== 0 
+          ? `Distance from beel to market: ${distance.toFixed(2)} km`
+          : 'Market location set. Upload image with GPS data to calculate distance.',
+        [{ text: 'OK' }]
+      );
     }
     
     setMarkers(newMarkers);
@@ -110,52 +139,120 @@ const GeofencingMap = ({
   };
 
   const clearMarker = (type) => {
-    const newMarkers = { ...markers };
-    newMarkers[type] = null;
-    setMarkers(newMarkers);
-    
-    if (type === 'hq') {
-      setDistances(prev => ({ ...prev, hq: '' }));
-      onDistanceUpdate('distance_hq', '');
-    } else if (type === 'market') {
-      setDistances(prev => ({ ...prev, market: '' }));
-      onDistanceUpdate('distance_market', '');
-    }
+    Alert.alert(
+      'Clear Location',
+      `Are you sure you want to clear the ${type === 'hq' ? 'HQ' : 'Market'} location?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            const newMarkers = { ...markers };
+            newMarkers[type] = null;
+            setMarkers(newMarkers);
+            
+            if (type === 'hq') {
+              setDistances(prev => ({ ...prev, hq: '' }));
+              onDistanceUpdate('distance_hq', '');
+            } else if (type === 'market') {
+              setDistances(prev => ({ ...prev, market: '' }));
+              onDistanceUpdate('distance_market', '');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const getCurrentLocation = async () => {
+    setLoadingLocation(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission denied', 'Location permission is required to use this feature');
+        Alert.alert(
+          'Permission Required', 
+          'Location permission is required to center the map on your current location'
+        );
         return;
       }
 
       const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.BestForNavigation,
+        accuracy: Location.Accuracy.High,
+        timeout: 10000,
       });
 
       const newRegion = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
       };
 
       setRegion(newRegion);
     } catch (error) {
-      Alert.alert('Error', 'Failed to get current location');
+      console.error('Location error:', error);
+      Alert.alert(
+        'Location Error', 
+        'Failed to get your current location. Please try again or manually navigate the map.'
+      );
+    } finally {
+      setLoadingLocation(false);
     }
   };
 
-  if (!isVisible) return null;
+  const centerOnBeel = () => {
+    if (markers.beel && markers.beel.latitude !== 0 && markers.beel.longitude !== 0) {
+      setRegion({
+        latitude: markers.beel.latitude,
+        longitude: markers.beel.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+    } else {
+      Alert.alert(
+        'No GPS Location', 
+        'Upload an image with GPS location data to center on the actual beel location.'
+      );
+    }
+  };
+
+  const handleClose = () => {
+    setMode('view');
+    onClose();
+  };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Distance Measurement Tool</Text>
-        
-        <View style={styles.buttonRow}>
+<Modal
+  visible={visible}
+  animationType="slide"
+  presentationStyle="fullScreen"
+  onRequestClose={handleClose}
+  transparent={false}
+  statusBarTranslucent={true} // Add this
+>
+      <SafeAreaView style={styles.modalContainer}>
+        {/* Header */}
+        <View style={styles.modalHeader}>
+          <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+            <Text style={styles.closeButtonText}>✕</Text>
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>📏 Distance Measurement Tool</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+
+        {/* Instructions */}
+        <View style={styles.instructionsContainer}>
+          <Text style={styles.instructionsText}>
+            {markers.beel && markers.beel.latitude !== 0 && markers.beel.longitude !== 0
+              ? 'Tap buttons below to set HQ/Market locations, then tap on map' 
+              : 'Upload an image with GPS data first for accurate distance measurement'
+            }
+          </Text>
+        </View>
+
+        {/* Mode Selection Buttons */}
+        <View style={styles.modeButtonsContainer}>
           <TouchableOpacity
             onPress={() => setMode('hq')}
             style={[
@@ -205,7 +302,8 @@ const GeofencingMap = ({
           </TouchableOpacity>
         </View>
 
-        <View style={styles.distanceRow}>
+        {/* Distance Display */}
+        <View style={styles.distanceContainer}>
           <View style={styles.distanceCard}>
             <View style={styles.distanceHeader}>
               <Text style={styles.distanceLabel}>HQ Distance:</Text>
@@ -240,98 +338,296 @@ const GeofencingMap = ({
             </Text>
           </View>
         </View>
-      </View>
 
-      <View style={styles.mapContainer}>
-        <MapView
-          style={styles.map}
-          region={region}
-          onRegionChangeComplete={setRegion}
-          onPress={handleMapPress}
-          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-          showsUserLocation={true}
-          showsMyLocationButton={false}
-        >
-          {markers.beel && (
-            <Marker
-              coordinate={markers.beel}
-              title="Beel Location"
-              description={`Lat: ${markers.beel.latitude.toFixed(6)}, Lng: ${markers.beel.longitude.toFixed(6)}`}
-              pinColor="blue"
-            />
-          )}
-          
-          {markers.hq && (
-            <Marker
-              coordinate={markers.hq}
-              title="HQ Location"
-              description={`Distance: ${distances.hq} km`}
-              pinColor="red"
-            />
-          )}
-          
-          {markers.market && (
-            <Marker
-              coordinate={markers.market}
-              title="Market Location"
-              description={`Distance: ${distances.market} km`}
-              pinColor="green"
-            />
-          )}
-        </MapView>
-
-        {mode !== 'view' && (
-          <View style={styles.instructionOverlay}>
-            <View style={styles.instructionCard}>
-              <Text style={styles.instructionText}>
-                {mode === 'hq' ? '📍 Tap on the map to set HQ location' : '🏪 Tap on the map to set Market location'}
-              </Text>
+        {/* Map Container */}
+        <View style={styles.mapContainer}>
+          {!mapReady && (
+            <View style={styles.mapLoadingOverlay}>
+              <ActivityIndicator size="large" color="#3498db" />
+              <Text style={styles.loadingText}>Loading Map...</Text>
             </View>
-          </View>
-        )}
+          )}
+       <MapView
+   style={styles.map}
+  initialRegion={{
+    latitude: 26.123456,
+    longitude: 92.987654,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
+  }}
+>
+ 
+  <UrlTile
+    urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    maximumZ={19}
+    flipY={false}
+  />
 
-        {!markers.beel && (
-          <View style={styles.noBeelOverlay}>
-            <View style={styles.noBeelCard}>
-              <Text style={styles.noBeelIcon}>📍</Text>
-              <Text style={styles.noBeelTitle}>Beel Location Required</Text>
-              <Text style={styles.noBeelText}>
-                Please upload an image with location data first to set the beel location on the map.
-              </Text>
+  {/* Show current user location */}
+  {region && (
+    <Marker
+      coordinate={{
+        latitude: region.latitude,
+        longitude: region.longitude,
+      }}
+      title="You are here"
+      pinColor="blue"
+    />
+  )}
+
+  {/* 📍 Beel Marker */}
+  {markers.beel && (
+    <Marker
+      coordinate={markers.beel}
+      title="Beel Location"
+      pinColor="#3498db"
+    />
+  )}
+
+  {/* 🏢 HQ Marker */}
+  {markers.hq && (
+    <Marker
+      coordinate={markers.hq}
+      title="HQ"
+      pinColor="#e74c3c"
+    />
+  )}
+
+  {/* 🛒 Market Marker */}
+  {markers.market && (
+    <Marker
+      coordinate={markers.market}
+      title="Market"
+      pinColor="#27ae60"
+    />
+  )}
+</MapView>
+
+          {/* Mode Instruction Overlay */}
+          {mode !== 'view' && (
+            <View style={styles.instructionOverlay}>
+              <View style={styles.instructionCard}>
+                <Text style={styles.instructionText}>
+                  {mode === 'hq' 
+                    ? '📍 Tap anywhere on the map to set HQ location and calculate distance' 
+                    : '🏪 Tap anywhere on the map to set Market location and calculate distance'
+                  }
+                </Text>
+              </View>
             </View>
+          )}
+
+          {/* No Beel Location Overlay */}
+          {!markers.beel && (
+            <View style={styles.noBeelOverlay}>
+              <View style={styles.noBeelCard}>
+                <Text style={styles.noBeelIcon}>🏞️</Text>
+                <Text style={styles.noBeelTitle}>No GPS Location Available</Text>
+                <Text style={styles.noBeelText}>
+                  Upload an image with GPS location data to enable accurate distance measurement. You can still set HQ and Market locations, but distances will be calculated from default coordinates.
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Map Controls */}
+          <View style={styles.mapControls}>
+            <TouchableOpacity
+              style={styles.controlButton}
+              onPress={getCurrentLocation}
+              disabled={loadingLocation}
+            >
+              {loadingLocation ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.controlButtonText}>📍</Text>
+              )}
+            </TouchableOpacity>
+            
+            {markers.beel && (
+              <TouchableOpacity
+                style={[styles.controlButton, styles.beelButton]}
+                onPress={centerOnBeel}
+              >
+                <Text style={styles.controlButtonText}>🏞️</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        )}
+        </View>
 
-        <TouchableOpacity
-          style={styles.locationButton}
-          onPress={getCurrentLocation}
-        >
-          <Text style={styles.locationButtonText}>📍</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#3498db' }]} />
-          <Text style={styles.legendText}>Beel Location</Text>
+        {/* Legend */}
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: '#3498db' }]} />
+            <Text style={styles.legendText}>Beel (Image Location)</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: '#e74c3c' }]} />
+            <Text style={styles.legendText}>HQ Location</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: '#27ae60' }]} />
+            <Text style={styles.legendText}>Market Location</Text>
+          </View>
         </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#e74c3c' }]} />
-          <Text style={styles.legendText}>HQ Location</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#27ae60' }]} />
-          <Text style={styles.legendText}>Market Location</Text>
-        </View>
-      </View>
-    </View>
+      </SafeAreaView>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#3498db',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  closeButton: {
+    padding: 5,
+  },
+  closeButtonText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  modalTitle: {
+    color: 'white',
+    fontSize: isSmallDevice ? 16 : 18,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 34,
+  },
+  instructionsContainer: {
+    backgroundColor: '#e8f5e8',
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#27ae60',
+  },
+  instructionsText: {
+    color: '#2c3e50',
+    fontSize: isSmallDevice ? 12 : 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  modeButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  modeButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  activeModeButton: {
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  modeButtonText: {
+    fontSize: isSmallDevice ? 12 : 14,
+    fontWeight: '500',
+    color: '#2c3e50',
+  },
+  activeModeButtonText: {
+    color: 'white',
+  },
+  distanceContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  distanceCard: {
+    flex: 1,
     backgroundColor: 'white',
     borderRadius: 8,
+    padding: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  distanceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  distanceLabel: {
+    color: '#2c3e50',
+    fontSize: isSmallDevice ? 12 : 14,
+    fontWeight: '500',
+  },
+  clearButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  clearButtonText: {
+    color: '#e74c3c',
+    fontSize: 12,
+  },
+  distanceValue: {
+    color: '#3498db',
+    fontSize: isSmallDevice ? 16 : 18,
+    fontWeight: 'bold',
+  },
+  mapContainer: {
+    flex: 1,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 12,
     overflow: 'hidden',
     ...Platform.select({
       ios: {
@@ -345,81 +641,21 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  header: {
-    padding: 16,
-    backgroundColor: '#3498db',
-  },
-  headerTitle: {
-    color: 'white',
-    fontSize: isSmallDevice ? 16 : 18,
-    fontWeight: '600',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  modeButton: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
+  mapLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10,
   },
-  activeModeButton: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  modeButtonText: {
-    fontSize: isSmallDevice ? 12 : 14,
-    fontWeight: '500',
-    color: '#2c3e50',
-  },
-  activeModeButtonText: {
-    color: 'white',
-  },
-  distanceRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  distanceCard: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 6,
-    padding: 12,
-  },
-  distanceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  distanceLabel: {
-    color: 'white',
-    fontSize: isSmallDevice ? 12 : 14,
-    fontWeight: '500',
-  },
-  clearButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  clearButtonText: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 12,
-  },
-  distanceValue: {
-    color: 'white',
-    fontSize: isSmallDevice ? 16 : 18,
-    fontWeight: 'bold',
-  },
-  mapContainer: {
-    position: 'relative',
-    height: 300,
+  loadingText: {
+    marginTop: 10,
+    color: '#3498db',
+    fontSize: 14,
   },
   map: {
     flex: 1,
@@ -442,6 +678,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: isSmallDevice ? 12 : 14,
     fontWeight: '500',
+    textAlign: 'center',
   },
   noBeelOverlay: {
     position: 'absolute',
@@ -489,17 +726,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  locationButton: {
+  mapControls: {
     position: 'absolute',
-    bottom: 16,
     right: 16,
+    bottom: 16,
+    flexDirection: 'column',
+    gap: 8,
+    zIndex: 1,
+  },
+  controlButton: {
     backgroundColor: '#3498db',
     width: 48,
     height: 48,
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -512,14 +753,17 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  locationButtonText: {
+  beelButton: {
+    backgroundColor: '#27ae60',
+  },
+  controlButtonText: {
     fontSize: 20,
   },
   legend: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     padding: 16,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'white',
     borderTopWidth: 1,
     borderTopColor: '#e9ecef',
   },
@@ -539,4 +783,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default GeofencingMap;
+export default GeofencingMapModal;

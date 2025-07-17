@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo,
+} from 'react';
 import { 
   View, 
   Text, 
@@ -24,10 +25,62 @@ import {
 } from '../utils/api';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import GeofencingMap from "../components/GeofencingMap";
+import { Alert as RNAlert } from 'react-native';
+import GeofencingMapModal from "../components/GeofencingMap";
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = width < 375;
+
+// Create DropdownField component outside of main component
+const DropdownField = React.memo(({ label, value, onChange, options, error, loading }) => {
+  const [isFocus, setIsFocus] = useState(false);
+  
+  return (
+    <View style={styles.inputGroup}>
+      <View style={styles.labelContainer}>
+        <Text style={styles.label}>{label}</Text>
+        {error && <Text style={styles.errorHint}>!</Text>}
+      </View>
+      
+      {loading ? (
+        <ActivityIndicator size="small" color="#3498db" />
+      ) : (
+        <Dropdown
+          style={[styles.dropdown, isFocus && { borderColor: 'blue' }, error && styles.errorInput]}
+          placeholderStyle={styles.placeholderStyle}
+          selectedTextStyle={styles.selectedTextStyle}
+          inputSearchStyle={styles.inputSearchStyle}
+          iconStyle={styles.iconStyle}
+          data={options}
+          search
+          maxHeight={300}
+          labelField="name"
+          valueField="id"
+          placeholder={!isFocus ? `Select ${label}` : '...'}
+          searchPlaceholder="Search..."
+          value={value}
+          onFocus={() => setIsFocus(true)}
+          onBlur={() => setIsFocus(false)}
+          onChange={item => {
+            onChange(item.id);
+            setIsFocus(false);
+          }}
+          renderLeftIcon={() => (
+            <View style={styles.dropdownIcon}>
+              <Text>📌</Text>
+            </View>
+          )}
+        />
+      )}
+      
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+    </View>
+  );
+});
 
 const SurveyFormScreen = ({ route, navigation }) => {
   const { token, user, surveyData, isEdit } = route.params;
@@ -82,9 +135,8 @@ const SurveyFormScreen = ({ route, navigation }) => {
   const [blocks, setBlocks] = useState([]);
   const [allBlocks, setAllBlocks] = useState([]);
   const [loadingMasterData, setLoadingMasterData] = useState(false);
-  const [isFocus, setIsFocus] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [showGeofencing, setShowGeofencing] = useState(false);
+  const [mapModalVisible, setMapModalVisible] = useState(false);
 
   useEffect(() => {
     const fetchMasterData = async () => {
@@ -368,25 +420,14 @@ const SurveyFormScreen = ({ route, navigation }) => {
   };
 
   const requestLocationPermission = async () => {
-    if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          {
-            title: "Location Permission",
-            message: "App needs access to your location",
-            buttonNeutral: "Ask Me Later",
-            buttonNegative: "Cancel",
-            buttonPositive: "OK"
-          }
-        );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
-      } catch (err) {
-        console.warn(err);
-        return false;
-      }
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      console.log('Location permission status:', status);
+      return status === 'granted';
+    } catch (err) {
+      console.warn('Location permission error:', err);
+      return false;
     }
-    return true;
   };
 
 const captureImage = async () => {
@@ -403,35 +444,63 @@ const captureImage = async () => {
     let lng = null;
     
     try {
-      const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
-      if (locationStatus === 'granted') {
-        console.log('Getting current location...');
-        const location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeout: 10000,
-          maximumAge: 60000,
-        });
+      console.log('Requesting location permission...');
+      const locationPermissionGranted = await requestLocationPermission();
+      
+      if (locationPermissionGranted) {
+        console.log('Location permission granted, getting current location...');
         
-        if (location?.coords?.latitude && location?.coords?.longitude) {
-          lat = location.coords.latitude;
-          lng = location.coords.longitude;
-          console.log('Location obtained:', { lat, lng });
+        // Check if location services are enabled
+        const isLocationEnabled = await Location.hasServicesEnabledAsync();
+        if (!isLocationEnabled) {
+          console.warn('Location services are disabled');
+          Alert.alert(
+            'Location Services Disabled', 
+            'Please enable location services in your device settings to capture location with photos.',
+            [{ text: 'OK' }]
+          );
         } else {
-          console.warn('Location coords not available');
+          console.log('Location services are enabled, fetching location...');
+          
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+            timeout: 15000,
+            maximumAge: 30000,
+          });
+          
+          if (location?.coords?.latitude && location?.coords?.longitude) {
+            lat = location.coords.latitude;
+            lng = location.coords.longitude;
+            console.log('Location obtained successfully:', { lat, lng });
+          } else {
+            console.warn('Location coords not available in response:', location);
+          }
         }
       } else {
-        console.warn('Location permission denied');
+        console.warn('Location permission denied by user');
+        Alert.alert(
+          'Location Permission Required', 
+          'Location access is needed to tag photos with GPS coordinates. You can still take photos, but they won\'t have location data.',
+          [{ text: 'OK' }]
+        );
       }
     } catch (locationError) {
-      console.warn('Location error:', locationError.message);
-      Alert.alert('Location Warning', 'Could not get current location. Photo will be uploaded without location data.');
+      console.error('Location error details:', locationError);
+      Alert.alert(
+        'Location Error', 
+        `Could not get current location: ${locationError.message}. Photo will be uploaded without location data.`,
+        [{ text: 'OK' }]
+      );
     }
 
     // 3. Launch camera
+    console.log('Launching camera...');
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.8,
-      allowsEditing: false,
+      quality: 0.5, // Reduced quality to avoid file size issues
+      allowsEditing: true,
+      aspect: [4, 3],
       exif: true,
+      base64: false,
     });
 
     if (result.canceled) return;
@@ -461,16 +530,13 @@ const captureImage = async () => {
         formData.append('latitude', latitude);
         formData.append('longitude', longitude);
         
-        if (lat !== null && lng !== null) {
-          console.log('Location data attached to upload:', { lat, lng });
-        } else {
-          console.log('Using default location values (0, 0) as location was not available');
-        }
+        console.log('Uploading with coordinates:', { latitude, longitude });
+        console.log('Location data status:', lat !== null && lng !== null ? 'Real GPS coordinates' : 'Default coordinates (0,0)');
 
 
         // Upload image
         const response = await uploadBeelPhoto(formData, token);
-        console.log('Full upload response:', response);
+        console.log('Upload response status:', response?.status);
 
         // Update form data with the new image and location
         if (response && response.status && response.data && response.data.length > 0) {
@@ -488,8 +554,8 @@ const captureImage = async () => {
           }));
           
           const locationMessage = lat !== null && lng !== null 
-            ? `Image uploaded successfully with location (${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}). Main lat/lng fields updated automatically.`
-            : 'Image uploaded successfully (no location data)';
+            ? `Image uploaded successfully with GPS location (${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)})`
+            : 'Image uploaded successfully (no GPS location - using default coordinates)';
           Alert.alert('Success', locationMessage);
         } else if (response && response.status) {
           // Handle case where upload was successful but no data array returned
@@ -506,8 +572,8 @@ const captureImage = async () => {
           }
           
           const locationMessage = lat !== null && lng !== null 
-            ? `Image uploaded successfully with location (${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}). Main lat/lng fields updated automatically.`
-            : 'Image uploaded successfully (no location data)';
+            ? `Image uploaded successfully with GPS location (${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)})`
+            : 'Image uploaded successfully (no GPS location - using default coordinates)';
           Alert.alert('Success', locationMessage);
         } else {
           console.warn('Unexpected response structure:', response);
@@ -516,7 +582,14 @@ const captureImage = async () => {
 
       } catch (error) {
         console.error('Upload error:', error);
-        Alert.alert('Error', error.message || 'Failed to upload image');
+        let errorMessage = error.message || 'Failed to upload image';
+        
+        // Handle specific file size error
+        if (errorMessage.includes('may not be greater than 2048 kilobytes')) {
+          errorMessage = 'Image file is too large (max 2MB). Please try taking another photo or reduce image quality.';
+        }
+        
+        Alert.alert('Upload Error', errorMessage);
       } finally {
         setUploadingImage(false);
       }
@@ -524,7 +597,7 @@ const captureImage = async () => {
   } catch (error) {
     console.error('Camera error:', error);
     setUploadingImage(false);
-    Alert.alert('Error', 'Failed to access camera: ' + error.message);
+    Alert.alert('Camera Error', 'Failed to access camera: ' + error.message);
   }
 };
 
@@ -659,55 +732,55 @@ const captureImage = async () => {
             <Field 
               label="Year *" 
               value={formData.year} 
-              onChangeText={text => handleChange('year', text)}
+              onChangeText={fieldHandlers.year}
               error={errors.year}
             />
             <Field 
               label="Beel Name *" 
               value={formData.beel_name} 
-              onChangeText={text => handleChange('beel_name', text)}
+              onChangeText={fieldHandlers.beel_name}
               error={errors.beel_name}
             />
-            {renderDropdown({
-              label: "District *",
-              value: formData.district_id,
-              onChange: handleDistrictChange,
-              options: districts,
-              error: errors.district_id,
-              loading: loadingMasterData
-            })}
-            {renderDropdown({
-              label: "Block *",
-              value: formData.block_id,
-              onChange: handleBlockChange,
-              options: blocks,
-              error: errors.block_id,
-              loading: loadingMasterData
-            })}
+            <DropdownField
+              label="District *"
+              value={formData.district_id}
+              onChange={memoizedHandleDistrictChange}
+              options={districts}
+              error={errors.district_id}
+              loading={loadingMasterData}
+            />
+            <DropdownField
+              label="Block *"
+              value={formData.block_id}
+              onChange={memoizedHandleBlockChange}
+              options={blocks}
+              error={errors.block_id}
+              loading={loadingMasterData}
+            />
             <Field 
               label="LAC" 
               value={formData.lac} 
-              onChangeText={text => handleChange('lac', text)} 
+              onChangeText={fieldHandlers.lac}
             />
             <Field 
               label="GP" 
               value={formData.gp} 
-              onChangeText={text => handleChange('gp', text)} 
+              onChangeText={fieldHandlers.gp}
             />
             <Field 
               label="Village" 
               value={formData.village} 
-              onChangeText={text => handleChange('village', text)} 
+              onChangeText={fieldHandlers.village}
             />
             <Field 
               label="Mauza" 
               value={formData.mauza} 
-              onChangeText={text => handleChange('mauza', text)} 
+              onChangeText={fieldHandlers.mauza}
             />
             <Field 
               label="PO" 
               value={formData.po} 
-              onChangeText={text => handleChange('po', text)} 
+              onChangeText={fieldHandlers.po}
             />
           </>
         );
@@ -720,77 +793,75 @@ const captureImage = async () => {
             <Field 
               label="Land Area (ha)" 
               value={formData.land_area} 
-              onChangeText={text => handleChange('land_area', text)}
+              onChangeText={fieldHandlers.land_area}
               keyboardType="numeric"
               error={errors.land_area}
             />
             <Field 
               label="Water Depth (Monsoon)" 
               value={formData.water_depth_monsoon} 
-              onChangeText={text => handleChange('water_depth_monsoon', text)}
+              onChangeText={fieldHandlers.water_depth_monsoon}
               keyboardType="numeric"
               error={errors.water_depth_monsoon}
             />
             <Field 
               label="Water Depth (Summer)" 
               value={formData.water_depth_summer} 
-              onChangeText={text => handleChange('water_depth_summer', text)}
+              onChangeText={fieldHandlers.water_depth_summer}
               keyboardType="numeric"
               error={errors.water_depth_summer}
             />
             <Field 
               label="Latitude" 
               value={formData.lat} 
-              onChangeText={text => handleChange('lat', text)}
+              onChangeText={fieldHandlers.lat}
               keyboardType="numeric"
             />
             <Field 
               label="Longitude" 
               value={formData.lng} 
-              onChangeText={text => handleChange('lng', text)}
+              onChangeText={fieldHandlers.lng}
               keyboardType="numeric"
             />
             <Field 
               label="Distance to HQ (km)" 
               value={formData.distance_hq} 
-              onChangeText={text => handleChange('distance_hq', text)}
+              onChangeText={fieldHandlers.distance_hq}
               keyboardType="numeric"
               error={errors.distance_hq}
             />
             <TouchableOpacity 
               style={styles.geofencingButton}
-              onPress={() => setShowGeofencing(!showGeofencing)}
+              onPress={() => setMapModalVisible(true)}
+      
             >
               <Text style={styles.geofencingButtonText}>
-                {showGeofencing ? '📍 Hide Distance Tool' : '🗺️ Use Map Distance Tool'}
+                🗺️ Use Map Distance Tool
               </Text>
             </TouchableOpacity>
             
-            {showGeofencing && (
-              <View style={styles.mapContainer}>
-                <GeofencingMap
-                  beelLocation={{
-                    lat: formData.image_lat || formData.lat,
-                    lng: formData.image_lng || formData.lng
-                  }}
-                  onDistanceUpdate={handleDistanceUpdate}
-                  initialHqDistance={formData.distance_hq}
-                  initialMarketDistance={formData.distance_market}
-                  isVisible={showGeofencing}
-                />
-              </View>
-            )}
+            <GeofencingMapModal
+              visible={mapModalVisible}
+              onClose={() => setMapModalVisible(false)}
+              beelLocation={{
+                lat: formData.image_lat || formData.lat || '22.5726',
+                lng: formData.image_lng || formData.lng || '88.3639'
+              }}
+              onDistanceUpdate={handleDistanceUpdate}
+              initialHqDistance={formData.distance_hq}
+              initialMarketDistance={formData.distance_market}
+            />
             
             <Field 
               label="Distance to Market (km)" 
               value={formData.distance_market} 
-              onChangeText={text => handleChange('distance_market', text)}
+              onChangeText={fieldHandlers.distance_market}
               keyboardType="numeric"
             />
             <Field 
               label="Road Accessibility" 
               value={formData.road_accessibility} 
-              onChangeText={text => handleChange('road_accessibility', text)}
+              onChangeText={fieldHandlers.road_accessibility}
             />
           </>
         );
@@ -802,47 +873,47 @@ const captureImage = async () => {
             <Field 
               label="Land Dag Number" 
               value={formData.land_dag_no} 
-              onChangeText={text => handleChange('land_dag_no', text)}
+              onChangeText={fieldHandlers.land_dag_no}
             />
             <Field 
               label="Land Patta Number" 
               value={formData.land_patta_no} 
-              onChangeText={text => handleChange('land_patta_no', text)}
+              onChangeText={fieldHandlers.land_patta_no}
             />
             <Field 
               label="Land Trace Map" 
               value={formData.land_trace_map} 
-              onChangeText={text => handleChange('land_trace_map', text)}
+              onChangeText={fieldHandlers.land_trace_map}
             />
             <Field 
               label="Land Chitha Copy" 
               value={formData.land_chitha_copy} 
-              onChangeText={text => handleChange('land_chitha_copy', text)}
+              onChangeText={fieldHandlers.land_chitha_copy}
             />
             <Field 
               label="NOC Revenue Circle" 
               value={formData.noc_rev_circle} 
-              onChangeText={text => handleChange('noc_rev_circle', text)}
+              onChangeText={fieldHandlers.noc_rev_circle}
             />
             <Field 
               label="DFDO Conformation Certificate" 
               value={formData.dfdo_conformation_certificate} 
-              onChangeText={text => handleChange('dfdo_conformation_certificate', text)}
+              onChangeText={fieldHandlers.dfdo_conformation_certificate}
             />
             <Field 
               label="NOC Forest" 
               value={formData.noc_forest} 
-              onChangeText={text => handleChange('noc_forest', text)}
+              onChangeText={fieldHandlers.noc_forest}
             />
             <Field 
               label="Beel Classification" 
               value={formData.classification_beel} 
-              onChangeText={text => handleChange('classification_beel', text)}
+              onChangeText={fieldHandlers.classification_beel}
             />
             <Field 
               label="Percentage Weed Infestation" 
               value={formData.percentage_weed_infestation} 
-              onChangeText={text => handleChange('percentage_weed_infestation', text)}
+              onChangeText={fieldHandlers.percentage_weed_infestation}
             />
           </>
         );
@@ -854,58 +925,58 @@ const captureImage = async () => {
             <Field 
               label="Type of Aquatic Vegetation" 
               value={formData.type_aquatic} 
-              onChangeText={text => handleChange('type_aquatic', text)}
+              onChangeText={fieldHandlers.type_aquatic}
             />
             <Field 
               label="Aquatic Vegetation Name" 
               value={formData.aquatic_name} 
-              onChangeText={text => handleChange('aquatic_name', text)}
+              onChangeText={fieldHandlers.aquatic_name}
             />
             <Field 
               label="Number of Villages" 
               value={formData.no_village} 
-              onChangeText={text => handleChange('no_village', text)}
+              onChangeText={fieldHandlers.no_village}
               keyboardType="numeric"
               error={errors.no_village}
             />
             <Field 
               label="Number of Households" 
               value={formData.no_household} 
-              onChangeText={text => handleChange('no_household', text)}
+              onChangeText={fieldHandlers.no_household}
               keyboardType="numeric"
               error={errors.no_household}
             />
             <Field 
               label="Percentage SC Population" 
               value={formData.percentage_sc} 
-              onChangeText={text => handleChange('percentage_sc', text)}
+              onChangeText={fieldHandlers.percentage_sc}
             />
             <Field 
               label="Percentage ST Population" 
               value={formData.percentage_st} 
-              onChangeText={text => handleChange('percentage_st', text)}
+              onChangeText={fieldHandlers.percentage_st}
             />
             <Field 
               label="Beel Management Committee" 
               value={formData.name_beel_managment_committee} 
-              onChangeText={text => handleChange('name_beel_managment_committee', text)}
+              onChangeText={fieldHandlers.name_beel_managment_committee}
             />
             <Field 
               label="Number of Active Fishermen" 
               value={formData.nos_active_fishermen} 
-              onChangeText={text => handleChange('nos_active_fishermen', text)}
+              onChangeText={fieldHandlers.nos_active_fishermen}
               keyboardType="numeric"
               error={errors.nos_active_fishermen}
             />
             <Field 
               label="Contact Person Name" 
               value={formData.name_contact} 
-              onChangeText={text => handleChange('name_contact', text)}
+              onChangeText={fieldHandlers.name_contact}
             />
             <Field 
               label="Contact Mobile Number" 
               value={formData.mobile_contact} 
-              onChangeText={text => handleChange('mobile_contact', text)}
+              onChangeText={fieldHandlers.mobile_contact}
               keyboardType="phone-pad"
               error={errors.mobile_contact}
               maxLength={10}
@@ -928,7 +999,8 @@ const captureImage = async () => {
   }, [currentPhase, errors, formData, blocks, districts, loadingMasterData, 
       handleChange, handleDistrictChange, handleBlockChange, renderValidationGuidance]);
 
-  const Field = React.memo(({ 
+  // Move Field component outside of render to prevent recreation
+  const Field = useCallback(({ 
     label, 
     value, 
     onChangeText, 
@@ -953,7 +1025,9 @@ const captureImage = async () => {
         placeholderTextColor="#999"
         maxLength={maxLength}
         autoCorrect={false}
-        autoCapitalize="none"
+        autoCapitalize="words"
+        blurOnSubmit={false}
+        returnKeyType="next"
       />
       
       {error && (
@@ -962,7 +1036,101 @@ const captureImage = async () => {
         </View>
       )}
     </View>
-  ));
+  ), []);
+
+  // Create stable field handlers
+  const createFieldHandler = useCallback((fieldName) => {
+    return (text) => {
+      setFormData(prev => {
+        if (prev[fieldName] === text) return prev;
+        return { ...prev, [fieldName]: text };
+      });
+      
+      if (errors[fieldName]) {
+        setErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors[fieldName];
+          return newErrors;
+        });
+      }
+    };
+  }, [errors]);
+
+  // Memoize field handlers
+  const fieldHandlers = useMemo(() => ({
+    year: createFieldHandler('year'),
+    beel_name: createFieldHandler('beel_name'),
+    lac: createFieldHandler('lac'),
+    gp: createFieldHandler('gp'),
+    village: createFieldHandler('village'),
+    mauza: createFieldHandler('mauza'),
+    po: createFieldHandler('po'),
+    land_area: createFieldHandler('land_area'),
+    water_depth_monsoon: createFieldHandler('water_depth_monsoon'),
+    water_depth_summer: createFieldHandler('water_depth_summer'),
+    lat: createFieldHandler('lat'),
+    lng: createFieldHandler('lng'),
+    distance_hq: createFieldHandler('distance_hq'),
+    distance_market: createFieldHandler('distance_market'),
+    road_accessibility: createFieldHandler('road_accessibility'),
+    land_dag_no: createFieldHandler('land_dag_no'),
+    land_patta_no: createFieldHandler('land_patta_no'),
+    land_trace_map: createFieldHandler('land_trace_map'),
+    land_chitha_copy: createFieldHandler('land_chitha_copy'),
+    noc_rev_circle: createFieldHandler('noc_rev_circle'),
+    dfdo_conformation_certificate: createFieldHandler('dfdo_conformation_certificate'),
+    noc_forest: createFieldHandler('noc_forest'),
+    classification_beel: createFieldHandler('classification_beel'),
+    percentage_weed_infestation: createFieldHandler('percentage_weed_infestation'),
+    type_aquatic: createFieldHandler('type_aquatic'),
+    aquatic_name: createFieldHandler('aquatic_name'),
+    no_village: createFieldHandler('no_village'),
+    no_household: createFieldHandler('no_household'),
+    percentage_sc: createFieldHandler('percentage_sc'),
+    percentage_st: createFieldHandler('percentage_st'),
+    name_beel_managment_committee: createFieldHandler('name_beel_managment_committee'),
+    nos_active_fishermen: createFieldHandler('nos_active_fishermen'),
+    name_contact: createFieldHandler('name_contact'),
+    mobile_contact: createFieldHandler('mobile_contact'),
+  }), [createFieldHandler]);
+
+  // Memoize dropdown handlers
+  const memoizedHandleDistrictChange = useCallback((value) => {
+    const districtBlocks = allBlocks.filter(
+      b => b.district_id.toString() === value.toString()
+    );
+    setBlocks(districtBlocks);
+    
+    setFormData(prev => ({
+      ...prev,
+      district_id: value,
+      block_id: ''
+    }));
+
+    if (errors.district_id) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.district_id;
+        return newErrors;
+      });
+    }
+  }, [allBlocks, errors.district_id]);
+
+  const memoizedHandleBlockChange = useCallback((value) => {
+    setFormData(prev => ({
+      ...prev,
+      block_id: value
+    }));
+
+    if (errors.block_id) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.block_id;
+        return newErrors;
+      });
+    }
+  }, [errors.block_id]);
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1343,22 +1511,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: isSmallDevice ? 14 : 16,
     fontWeight: '500',
-  },
-  mapContainer: {
-    marginBottom: 20,
-    borderRadius: 8,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
+    textAlign: 'center',
   },
 });
 
