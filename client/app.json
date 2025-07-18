@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "client",
+    "name": "Beel Monitor",
     "slug": "client",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -21,19 +21,32 @@
       }
     },
     "android": {
+      "package": "com.beelmonitorapp.client",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "CAMERA"
-      ]
+      ],
+      "usesCleartextTraffic": true,
+      "edgeToEdgeEnabled": true
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
+    "package": "com.beelmonitorapp.client",
+    "extra": {
+      "eas": {
+        "projectId": "332ba3bd-efde-48ac-9868-7b21f942885b"
+      }
+    }
+  },
+  "web": {
+    "favicon": "./assets/favicon.png"
+  },
+  "extra": {
+    "eas": {
+      "projectId": "332ba3bd-efde-48ac-9868-7b21f942885b"
     }
   }
 }
