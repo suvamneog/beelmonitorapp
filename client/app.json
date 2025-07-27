@@ -18,7 +18,8 @@
         "NSLocationWhenInUseUsageDescription": "This app needs location access to tag photos with GPS coordinates for beel surveys.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs location access to tag photos with GPS coordinates for beel surveys.",
         "NSCameraUsageDescription": "This app needs camera access to take photos for beel surveys."
-      }
+      },
+      "bundleIdentifier": "com.beelmonitorapp.client"
     },
     "android": {
       "package": "com.beelmonitorapp.client",
@@ -29,24 +30,22 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "CAMERA"
+        "CAMERA",
+        "INTERNET"
       ],
       "usesCleartextTraffic": true,
       "edgeToEdgeEnabled": true
     },
     "package": "com.beelmonitorapp.client",
     "extra": {
+      "apiBaseUrl": "http://122.185.169.250/gisapi/public/api",
       "eas": {
-        "projectId": "332ba3bd-efde-48ac-9868-7b21f942885b"
+        "projectId": "d29be5c5-7c86-4f3f-bcb6-72944206e3a3"
       }
-    }
+    },
+    "owner": "gunajitnath10"
   },
   "web": {
     "favicon": "./assets/favicon.png"
-  },
-  "extra": {
-    "eas": {
-      "projectId": "332ba3bd-efde-48ac-9868-7b21f942885b"
-    }
   }
 }
