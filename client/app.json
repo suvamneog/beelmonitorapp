@@ -33,17 +33,11 @@
         "CAMERA",
         "INTERNET"
       ],
-      "usesCleartextTraffic": true,
+      "networkSecurityConfig": "./network_security_config.xml",
       "edgeToEdgeEnabled": true
     },
-    "extra": {
-      "eas": {
-        "projectId": "f2bd6945-0395-41de-b1ef-efb55a5b68af"
-      }
-    },
-    "owner": "suvamcode"
-  },
-  "web": {
-    "favicon": "./assets/favicon.png"
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
   }
 }
