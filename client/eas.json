@@ -4,29 +4,9 @@
   },
   "build": {
     "production": {
-      "developmentClient": false,
-      "distribution": "internal",
       "android": {
-        "buildType": "apk"
-      },
-      "ios": {
-        "simulator": false
-      },
-      "env": {
-        "BASE_URL": "http://122.185.169.250/gisapi/public/api"
-      }
-    },
-    "preview": {
-      "developmentClient": false,
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      },
-      "ios": {
-        "simulator": true
-      },
-      "env": {
-        "BASE_URL": "http://122.185.169.250/gisapi/public/api"
+        "buildType": "apk",
+         "credentialsSource": "remote"
       }
     }
   }

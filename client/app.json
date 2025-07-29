@@ -36,14 +36,12 @@
       "usesCleartextTraffic": true,
       "edgeToEdgeEnabled": true
     },
-    "package": "com.beelmonitorapp.client",
     "extra": {
-      "apiBaseUrl": "http://122.185.169.250/gisapi/public/api",
       "eas": {
-        "projectId": "d29be5c5-7c86-4f3f-bcb6-72944206e3a3"
+        "projectId": "f2bd6945-0395-41de-b1ef-efb55a5b68af"
       }
     },
-    "owner": "gunajitnath10"
+    "owner": "suvamcode"
   },
   "web": {
     "favicon": "./assets/favicon.png"
