@@ -25,7 +25,10 @@
       "package": "com.beelmonitorapp.client",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#ffffff",
+        "config": {
+        "googleMaps": {}  
+      }
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -33,11 +36,25 @@
         "CAMERA",
         "INTERNET"
       ],
-      "networkSecurityConfig": "./network_security_config.xml",
       "edgeToEdgeEnabled": true
     },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e06f96a0-cd5f-455b-a298-a28f512cc3d9"
+      }
     }
   }
 }

@@ -1,7 +1,6 @@
 const BASE_URL = "http://122.185.169.250/gisapi/public/api";
 export const loginOfficer = async (email, password) => {
   try {
-    console.log("BASE_URL used in build:", BASE_URL);
     const response = await fetch(`${BASE_URL}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
