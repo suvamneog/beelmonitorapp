@@ -172,4 +172,19 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+      implementation(project(':react-native-onesignal')){
+      exclude group: 'com.google.android.gms'
+  }
+
+ implementation(project(':react-native-maps')) {
+        exclude group: 'com.google.android.gms'
+    }
+    implementation 'com.google.android.gms:play-services-base:18.3.0'
+    implementation 'com.google.android.gms:play-services-location:21.2.0'
+    implementation 'com.google.android.gms:play-services-maps:18.2.0'
+
+    // Other libraries (e.g., OneSignal)
+    implementation(project(':react-native-onesignal')) {
+        exclude group: 'com.google.android.gms'
+    }
 }

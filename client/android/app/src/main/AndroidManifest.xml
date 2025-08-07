@@ -39,7 +39,7 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
     <meta-data
   android:name="com.google.android.geo.API_KEY"
-  android:value="YOUR_API_KEY_HERE"/>
+  android:value="AIzaSyDmmZoT10dQ1vRBnjQ_zOoozJ4dBJXPHT4"/>
 
     <activity
         android:name=".MainActivity"

@@ -7,10 +7,11 @@ import {
   StyleSheet,
   RefreshControl,
   TouchableOpacity,
-  Modal,
   Animated,
   Dimensions,
   Alert,
+  SafeAreaView,
+  PanResponder
 } from "react-native";
 import { getBeelList, getBeelStats } from "../utils/api";
 import BeelCard from "../components/BeelCard";
@@ -26,6 +27,63 @@ const DashboardScreen = ({ route, navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(-width * 0.8)).current;
   const { token, user } = route.params;
+
+  // Pan responder for swipe gestures
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > Math.abs(gestureState.dy * 3);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dx > 0) {
+          const newValue = Math.min(0, -width * 0.8 + gestureState.dx);
+          slideAnim.setValue(newValue);
+        } else {
+          const newValue = Math.max(-width * 0.8, gestureState.dx);
+          slideAnim.setValue(newValue);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx > width * 0.2) {
+          openMenu();
+        } else if (gestureState.dx < -width * 0.2) {
+          closeMenu();
+        } else {
+          if (menuVisible) {
+            openMenu();
+          } else {
+            closeMenu();
+          }
+        }
+      },
+    })
+  ).current;
+
+  const openMenu = () => {
+    setMenuVisible(true);
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeMenu = () => {
+    Animated.timing(slideAnim, {
+      toValue: -width * 0.8,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => setMenuVisible(false));
+  };
+
+  const toggleMenu = () => {
+    if (menuVisible) {
+      closeMenu();
+    } else {
+      openMenu();
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -58,25 +116,8 @@ const DashboardScreen = ({ route, navigation }) => {
     fetchData();
   };
 
-  const toggleMenu = () => {
-    if (menuVisible) {
-      Animated.timing(slideAnim, {
-        toValue: -width * 0.8,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => setMenuVisible(false));
-    } else {
-      setMenuVisible(true);
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }
-  };
-
   const navigateToScreen = (screenName) => {
-    toggleMenu();
+    closeMenu();
     navigation.navigate(screenName, { token, user });
   };
 
@@ -117,7 +158,7 @@ const DashboardScreen = ({ route, navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} {...panResponder.panHandlers}>
       {/* Header with Menu Icon */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.menuButton} onPress={toggleMenu}>
@@ -136,17 +177,12 @@ const DashboardScreen = ({ route, navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Popup Navigation Menu - Only visible when menuVisible is true */}
-      <Modal
-        visible={menuVisible}
-        transparent={true}
-        animationType="none"
-        onRequestClose={toggleMenu}
-      >
+      {/* Slide-out Menu */}
+      {menuVisible && (
         <TouchableOpacity
           style={styles.overlay}
           activeOpacity={1}
-          onPress={toggleMenu}
+          onPress={closeMenu}
         >
           <Animated.View
             style={[
@@ -176,7 +212,7 @@ const DashboardScreen = ({ route, navigation }) => {
                   <Text style={styles.menuText}>Home</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.menuItem} onPress={toggleMenu}>
+                <TouchableOpacity style={styles.menuItem} onPress={closeMenu}>
                   <Text style={styles.menuIcon}>🏢</Text>
                   <Text style={styles.menuText}>Dashboard</Text>
                 </TouchableOpacity>
@@ -213,7 +249,7 @@ const DashboardScreen = ({ route, navigation }) => {
             </TouchableOpacity>
           </Animated.View>
         </TouchableOpacity>
-      </Modal>
+      )}
 
       {/* Main Content */}
       <FlatList
@@ -266,7 +302,7 @@ const DashboardScreen = ({ route, navigation }) => {
       <TouchableOpacity style={styles.fab} onPress={navigateToAddBeel}>
         <Text style={styles.fabIcon}>+</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -319,8 +355,9 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   overlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
+    zIndex: 1,
   },
   menuContainer: {
     position: "absolute",
@@ -334,6 +371,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 2, height: 0 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
+    zIndex: 2,
   },
   userSection: {
     backgroundColor: "#3498db",
@@ -430,6 +468,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
+    zIndex: 1,
   },
   fabIcon: {
     color: "white",

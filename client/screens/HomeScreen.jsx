@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
@@ -9,7 +8,8 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
-  SafeAreaView
+  SafeAreaView,
+  PanResponder
 } from 'react-native';
 import { BarChart } from 'react-native-chart-kit';
 import { getBeelStats } from '../utils/api';
@@ -23,43 +23,90 @@ const HomeScreen = ({ route, navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(-width * 0.7)).current;
 
-useEffect(() => {
-  const fetchStats = async () => {
-    try {
-      const response = await getBeelStats(token);
-      console.log("API Response:", response); 
-     
-      if (response) {
-        setStats(response);  
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await getBeelStats(token);
+        console.log("API Response:", response); 
+       
+        if (response) {
+          setStats(response);  
+        }
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    fetchStats();
+  }, []);
+
+  // Create pan responder for swipe gestures
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only respond to horizontal swipes
+        return Math.abs(gestureState.dx) > Math.abs(gestureState.dy * 3);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dx > 0) {
+          // Swiping right to open menu
+          const newValue = Math.min(0, -width * 0.7 + gestureState.dx);
+          slideAnim.setValue(newValue);
+        } else {
+          // Swiping left to close menu
+          const newValue = Math.max(-width * 0.7, gestureState.dx);
+          slideAnim.setValue(newValue);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx > width * 0.2) {
+          // Swiped enough to open menu
+          openMenu();
+        } else if (gestureState.dx < -width * 0.2) {
+          // Swiped enough to close menu
+          closeMenu();
+        } else {
+          // Not swiped enough, return to previous state
+          if (menuVisible) {
+            openMenu();
+          } else {
+            closeMenu();
+          }
+        }
+      },
+    })
+  ).current;
+
+  const openMenu = () => {
+    setMenuVisible(true);
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
   };
 
-  fetchStats();
-}, []);
+  const closeMenu = () => {
+    Animated.timing(slideAnim, {
+      toValue: -width * 0.7,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => setMenuVisible(false));
+  };
+
   const toggleMenu = () => {
     if (menuVisible) {
-      Animated.timing(slideAnim, {
-        toValue: -width * 0.7,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => setMenuVisible(false));
+      closeMenu();
     } else {
-      setMenuVisible(true);
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
+      openMenu();
     }
   };
 
   const navigateToProfile = () => {
-    toggleMenu();
+    closeMenu();
     navigation.navigate('Profile', { 
       userId: user.id, 
       token: token 
@@ -67,17 +114,17 @@ useEffect(() => {
   };
 
   const navigateToSettings = () => {
-    toggleMenu();
+    closeMenu();
     navigation.navigate('Settings', { token, user });
   };
 
   const navigateToSurveyForm = () => {
-    toggleMenu();
+    closeMenu();
     navigation.navigate('SurveyForm', { token, user });
   };
 
   const navigateToDashboard = () => {
-    toggleMenu();
+    closeMenu();
     navigation.navigate('Dashboard', { token, user });
   };
 
@@ -102,7 +149,7 @@ useEffect(() => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} {...panResponder.panHandlers}>
       {/* Header with Menu Button */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.menuButton} onPress={toggleMenu}>
@@ -121,7 +168,7 @@ useEffect(() => {
         <TouchableOpacity 
           style={styles.overlay} 
           activeOpacity={1} 
-          onPress={toggleMenu}
+          onPress={closeMenu}
         >
           <Animated.View 
             style={[
@@ -140,7 +187,7 @@ useEffect(() => {
             </View>
 
             <View style={styles.menuItems}>
-              <TouchableOpacity style={styles.menuItem} onPress={toggleMenu}>
+              <TouchableOpacity style={styles.menuItem} onPress={navigateToDashboard}>
                 <Text style={styles.menuIcon}>📊</Text>
                 <Text style={styles.menuText}>Dashboard</Text>
               </TouchableOpacity>
@@ -209,15 +256,15 @@ useEffect(() => {
 
       {/* Bottom Action Buttons */}
       <View style={styles.actionButtons}>
-      <TouchableOpacity 
-    style={styles.actionButton}
-    onPress={() => navigation.navigate('SurveyDetails', { 
-      surveyId: 1,
-      token: token 
-    })}
-  >
-    <Text style={styles.actionButtonText}>View Survey</Text>
-  </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => navigation.navigate('SurveyDetails', { 
+            surveyId: 1,
+            token: token 
+          })}
+        >
+          <Text style={styles.actionButtonText}>View Survey</Text>
+        </TouchableOpacity>
         
         <TouchableOpacity 
           style={styles.actionButton}
@@ -245,14 +292,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#3498db',
-    paddingVertical: 15,
+    paddingVertical: 25,
     paddingHorizontal: 20,
   },
   menuButton: {
     padding: 5,
+    marginTop:30
   },
   menuIcon: {
-    width: 24,
+    width: 27,
     height: 18,
     justifyContent: 'space-between',
   },
@@ -264,7 +312,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: 'white',
-    fontSize: 18,
+    fontSize: 25,
+    marginTop: 25,
     fontWeight: 'bold',
   },
   placeholder: {

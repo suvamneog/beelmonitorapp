@@ -11,7 +11,7 @@ import {
   SafeAreaView,
   StatusBar
 } from 'react-native';
-import MapView, { Marker, UrlTile, PROVIDER_DEFAULT  } from 'react-native-maps';
+import MapView, { Marker, UrlTile } from 'react-native-maps';
 import * as Location from 'expo-location';
 
 const { width, height } = Dimensions.get('window');
@@ -364,7 +364,7 @@ const DistanceToolScreen = ({ route, navigation }) => {
         <MapView
           ref={mapRef}
           style={styles.map}
-          provider={PROVIDER_DEFAULT} 
+          provider="google"
           initialRegion={region}
           onMapReady={() => {
             console.log('Map is ready');
@@ -379,7 +379,7 @@ const DistanceToolScreen = ({ route, navigation }) => {
           pitchEnabled={true}
         >
           <UrlTile
-            urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            urlTemplate="https://{a-c}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png"
             maximumZ={19}
             flipY={false}
           />
