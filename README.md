@@ -197,7 +197,7 @@ Distance Calculation → Data Return
 3. **Configure API endpoint**
    ```javascript
    // In utils/api.js
-   const BASE_URL = 'http://122.185.169.250/gisapi/public/api';
+   const BASE_URL = "API_URL"
    ```
 
 4. **Start development server**
