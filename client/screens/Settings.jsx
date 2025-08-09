@@ -24,6 +24,10 @@ const SettingsScreen = ({ navigation, route }) => {
       </View>
 
       <View style={styles.settingsContainer}>
+        <TouchableOpacity style={styles.option} onPress={() => navigation.navigate('OfflineSettings', { token, user })}>
+          <Text style={styles.optionText}>Offline Settings</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.option} onPress={handleChangePassword}>
           <Text style={styles.optionText}>Change Password</Text>
         </TouchableOpacity>

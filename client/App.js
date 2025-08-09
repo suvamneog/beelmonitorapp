@@ -11,6 +11,7 @@ import AddBeelScreen from './screens/AddBeel';
 import SurveyFormScreen from './screens/SurveyFormScreen';
 import SurveyDetailsScreen from './screens/SurveyDetailsScreen';
 import DistanceToolScreen from './screens/DistanceToolScreen';
+import OfflineSettingsScreen from './screens/OfflineSettingsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -131,6 +132,20 @@ export default function App() {
           component={DistanceToolScreen} 
           options={{ 
             headerShown: false
+          }}
+        />
+        <Stack.Screen 
+          name="OfflineSettings" 
+          component={OfflineSettingsScreen} 
+          options={{ 
+            title: 'Offline Settings',
+            headerStyle: {
+              backgroundColor: '#3498db',
+            },
+            headerTintColor: '#fff',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+            },
           }}
         />
       </Stack.Navigator>

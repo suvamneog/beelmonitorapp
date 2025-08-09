@@ -9,10 +9,13 @@ import {
   Platform,
   ActivityIndicator,
   SafeAreaView,
-  StatusBar
+  StatusBar,
+  Modal
 } from 'react-native';
 import MapView, { Marker, UrlTile } from 'react-native-maps';
 import * as Location from 'expo-location';
+import offlineMapManager from '../utils/offlineMapTiles';
+import NetInfo from '@react-native-netinfo/netinfo';
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = width < 375;
@@ -57,6 +60,65 @@ const DistanceToolScreen = ({ route, navigation }) => {
   const [mapReady, setMapReady] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const mapRef = useRef(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [isOfflineMapAvailable, setIsOfflineMapAvailable] = useState(false);
+  const [showOfflineMapModal, setShowOfflineMapModal] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(null);
+
+  // Network status monitoring
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected && state.isInternetReachable);
+    });
+
+    NetInfo.fetch().then(state => {
+      setIsOnline(state.isConnected && state.isInternetReachable);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Check offline map availability
+  useEffect(() => {
+    checkOfflineMapAvailability();
+  }, []);
+
+  // Download progress monitoring
+  useEffect(() => {
+    const handleProgress = (progress) => {
+      setDownloadProgress(progress);
+    };
+
+    offlineMapManager.addProgressListener(handleProgress);
+    return () => offlineMapManager.removeProgressListener(handleProgress);
+  }, []);
+
+  const checkOfflineMapAvailability = async () => {
+    const available = await offlineMapManager.isOfflineMapAvailable();
+    setIsOfflineMapAvailable(available);
+  };
+
+  const handleDownloadOfflineMap = async () => {
+    try {
+      setShowOfflineMapModal(true);
+      const result = await offlineMapManager.downloadAssamMapTiles(8, 12);
+      
+      if (result.success) {
+        setIsOfflineMapAvailable(true);
+        Alert.alert(
+          'Download Complete',
+          `Successfully downloaded ${result.downloaded} map tiles for offline use.`
+        );
+      } else {
+        Alert.alert('Download Failed', result.error || 'Failed to download offline maps');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to download offline maps: ' + error.message);
+    } finally {
+      setShowOfflineMapModal(false);
+      setDownloadProgress(null);
+    }
+  };
 
   useEffect(() => {
     console.log('DistanceToolScreen mounted with beelLocation:', beelLocation);
@@ -249,9 +311,70 @@ const DistanceToolScreen = ({ route, navigation }) => {
     );
   };
 
+  const renderOfflineMapModal = () => (
+    <Modal
+      visible={showOfflineMapModal}
+      transparent={true}
+      animationType="fade"
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.downloadModal}>
+          <Text style={styles.downloadTitle}>Downloading Offline Maps</Text>
+          <Text style={styles.downloadSubtitle}>
+            Downloading map tiles for Assam region...
+          </Text>
+          
+          {downloadProgress && (
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <View 
+                  style={[
+                    styles.progressFill, 
+                    { width: `${downloadProgress.progress || 0}%` }
+                  ]} 
+                />
+              </View>
+              <Text style={styles.progressText}>
+                {downloadProgress.downloaded || 0} / {downloadProgress.total || 0} tiles
+                ({Math.round(downloadProgress.progress || 0)}%)
+              </Text>
+              
+              {downloadProgress.status === 'completed' && (
+                <Text style={styles.completedText}>✅ Download completed!</Text>
+              )}
+              
+              {downloadProgress.status === 'error' && (
+                <Text style={styles.errorText}>❌ Download failed</Text>
+              )}
+            </View>
+          )}
+          
+          <ActivityIndicator size="large" color="#3498db" style={{ marginTop: 20 }} />
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderNetworkStatus = () => (
+    <View style={[styles.networkBanner, { backgroundColor: isOnline ? '#27ae60' : '#e74c3c' }]}>
+      <Text style={styles.networkText}>
+        {isOnline ? '🌐 Online' : '📱 Offline Mode'}
+      </Text>
+      {!isOnline && isOfflineMapAvailable && (
+        <Text style={styles.offlineMapText}>📍 Offline maps available</Text>
+      )}
+      {!isOnline && !isOfflineMapAvailable && (
+        <Text style={styles.offlineMapText}>⚠️ No offline maps</Text>
+      )}
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#3498db" />
+      
+      {renderNetworkStatus()}
+      {renderOfflineMapModal()}
       
       {/* Header */}
       <View style={styles.header}>
@@ -259,9 +382,19 @@ const DistanceToolScreen = ({ route, navigation }) => {
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>📏 Distance Measurement Tool</Text>
-        <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
-          <Text style={styles.saveButtonText}>Save</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          {!isOfflineMapAvailable && isOnline && (
+            <TouchableOpacity 
+              onPress={handleDownloadOfflineMap} 
+              style={styles.downloadButton}
+            >
+              <Text style={styles.downloadButtonText}>📥</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
+            <Text style={styles.saveButtonText}>Save</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Instructions */}
@@ -364,7 +497,7 @@ const DistanceToolScreen = ({ route, navigation }) => {
         <MapView
           ref={mapRef}
           style={styles.map}
-          provider="google"
+          provider={isOnline ? "google" : undefined}
           initialRegion={region}
           onMapReady={() => {
             console.log('Map is ready');
@@ -378,11 +511,19 @@ const DistanceToolScreen = ({ route, navigation }) => {
           rotateEnabled={true}
           pitchEnabled={true}
         >
-          <UrlTile
-            urlTemplate="https://{a-c}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png"
-            maximumZ={19}
-            flipY={false}
-          />
+          {isOnline ? (
+            <UrlTile
+              urlTemplate="https://{a-c}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png"
+              maximumZ={19}
+              flipY={false}
+            />
+          ) : isOfflineMapAvailable ? (
+            <UrlTile
+              urlTemplate={offlineMapManager.getOfflineTileUrlTemplate()}
+              maximumZ={14}
+              flipY={false}
+            />
+          ) : null}
 
           {/* Beel Marker */}
           {markers.beel && (
@@ -443,6 +584,29 @@ const DistanceToolScreen = ({ route, navigation }) => {
               <Text style={styles.noBeelText}>
                 Upload an image with GPS location data to enable accurate distance measurement. You can still set HQ and Market locations, but distances will be calculated from default coordinates.
               </Text>
+            </View>
+          </View>
+        )}
+
+        {/* No Map Overlay */}
+        {!isOnline && !isOfflineMapAvailable && (
+          <View style={styles.noMapOverlay}>
+            <View style={styles.noMapCard}>
+              <Text style={styles.noMapIcon}>🗺️</Text>
+              <Text style={styles.noMapTitle}>No Offline Maps Available</Text>
+              <Text style={styles.noMapText}>
+                You are offline and no cached maps are available. Connect to internet and tap the download button to cache maps for offline use.
+              </Text>
+              {isOnline && (
+                <TouchableOpacity 
+                  style={styles.downloadOfflineButton}
+                  onPress={handleDownloadOfflineMap}
+                >
+                  <Text style={styles.downloadOfflineButtonText}>
+                    📥 Download Offline Maps
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -530,6 +694,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     flex: 1,
   },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  downloadButton: {
+    backgroundColor: '#f39c12',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  downloadButtonText: {
+    fontSize: 16,
+  },
   saveButton: {
     backgroundColor: '#27ae60',
     paddingHorizontal: 16,
@@ -540,6 +718,91 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: '600',
+  },
+  networkBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  networkText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  offlineMapText: {
+    color: 'white',
+    fontSize: 11,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  downloadModal: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    maxWidth: width * 0.8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  downloadTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  downloadSubtitle: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  progressContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  progressBar: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#ecf0f1',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#3498db',
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: 14,
+    color: '#2c3e50',
+    marginBottom: 8,
+  },
+  completedText: {
+    fontSize: 14,
+    color: '#27ae60',
+    fontWeight: '500',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#e74c3c',
+    fontWeight: '500',
   },
   instructionsContainer: {
     backgroundColor: '#e8f5e8',
@@ -733,6 +996,64 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  noMapOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  noMapCard: {
+    backgroundColor: 'white',
+    padding: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    maxWidth: width * 0.8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  noMapIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  noMapTitle: {
+    fontSize: isSmallDevice ? 16 : 18,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  noMapText: {
+    fontSize: isSmallDevice ? 12 : 14,
+    color: '#7f8c8d',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  downloadOfflineButton: {
+    backgroundColor: '#3498db',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
+  },
+  downloadOfflineButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
   },
   mapControls: {
     position: 'absolute',

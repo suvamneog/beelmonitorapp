@@ -15,6 +15,9 @@ import {
 } from "react-native";
 import { getBeelList, getBeelStats } from "../utils/api";
 import BeelCard from "../components/BeelCard";
+import { getPendingSubmissions } from "../utils/offlineStorage";
+import syncManager from "../utils/syncManager";
+import NetInfo from '@react-native-netinfo/netinfo';
 
 const { width } = Dimensions.get("window");
 
@@ -26,7 +29,51 @@ const DashboardScreen = ({ route, navigation }) => {
   const [error, setError] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(-width * 0.8)).current;
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [syncStatus, setSyncStatus] = useState(null);
   const { token, user } = route.params;
+
+  // Network status monitoring
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected && state.isInternetReachable);
+    });
+
+    NetInfo.fetch().then(state => {
+      setIsOnline(state.isConnected && state.isInternetReachable);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Sync status monitoring
+  useEffect(() => {
+    const handleSyncStatus = (status) => {
+      setSyncStatus(status);
+      if (status.syncStatus === 'completed') {
+        loadPendingCount(); // Refresh pending count after sync
+        fetchData(); // Refresh data after sync
+      }
+    };
+
+    syncManager.addSyncListener(handleSyncStatus);
+    return () => syncManager.removeSyncListener(handleSyncStatus);
+  }, []);
+
+  // Load pending submissions count
+  const loadPendingCount = async () => {
+    try {
+      const pending = await getPendingSubmissions();
+      setPendingCount(Object.keys(pending).length);
+    } catch (error) {
+      console.error('Error loading pending count:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadPendingCount();
+  }, []);
 
   // Pan responder for swipe gestures
   const panResponder = useRef(
@@ -113,7 +160,32 @@ const DashboardScreen = ({ route, navigation }) => {
 
   const onRefresh = () => {
     setRefreshing(true);
+    loadPendingCount();
     fetchData();
+  };
+
+  const handleForceSync = async () => {
+    if (!isOnline) {
+      Alert.alert('Offline', 'Please connect to internet to sync data.');
+      return;
+    }
+
+    try {
+      const result = await syncManager.forceSyncAll(token);
+      if (result.success) {
+        Alert.alert(
+          'Sync Complete',
+          `Successfully synced ${result.successCount} items.`
+        );
+      } else {
+        Alert.alert(
+          'Sync Issues',
+          `Synced ${result.successCount} items, ${result.failureCount} failed.`
+        );
+      }
+    } catch (error) {
+      Alert.alert('Sync Error', error.message);
+    }
   };
 
   const navigateToScreen = (screenName) => {
@@ -161,6 +233,12 @@ const DashboardScreen = ({ route, navigation }) => {
     <SafeAreaView style={styles.container} {...panResponder.panHandlers}>
       {/* Header with Menu Icon */}
       <View style={styles.header}>
+        <View style={[styles.networkIndicator, { backgroundColor: isOnline ? '#27ae60' : '#e74c3c' }]}>
+          <Text style={styles.networkIndicatorText}>
+            {isOnline ? '●' : '●'}
+          </Text>
+        </View>
+        
         <TouchableOpacity style={styles.menuButton} onPress={toggleMenu}>
           <View style={styles.menuIcon}>
             <View style={styles.menuLine} />
@@ -168,13 +246,29 @@ const DashboardScreen = ({ route, navigation }) => {
             <View style={styles.menuLine} />
           </View>
         </TouchableOpacity>
+        
         <Text style={styles.headerTitle}>Beel Dashboard</Text>
-        <TouchableOpacity
-          style={styles.surveyButton}
-          onPress={() => navigateToScreen("SurveyForm")}
-        >
-          <Text style={styles.surveyButtonText}>+ Survey</Text>
-        </TouchableOpacity>
+        
+        <View style={styles.headerActions}>
+          {pendingCount > 0 && (
+            <TouchableOpacity
+              style={styles.syncButton}
+              onPress={handleForceSync}
+              disabled={!isOnline}
+            >
+              <Text style={styles.syncButtonText}>
+                {syncStatus?.syncStatus === 'started' ? '🔄' : '📤'} {pendingCount}
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity
+            style={styles.surveyButton}
+            onPress={() => navigateToScreen("SurveyForm")}
+          >
+            <Text style={styles.surveyButtonText}>+ Survey</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Slide-out Menu */}
@@ -278,6 +372,28 @@ const DashboardScreen = ({ route, navigation }) => {
           <View style={styles.welcomeSection}>
             <Text style={styles.welcome}>Welcome, {user.name}</Text>
             <Text style={styles.designation}>{user.designation}</Text>
+            
+            {!isOnline && (
+              <View style={styles.offlineBanner}>
+                <Text style={styles.offlineBannerText}>
+                  📱 Offline Mode - Data will sync when online
+                </Text>
+              </View>
+            )}
+            
+            {pendingCount > 0 && (
+              <View style={styles.pendingBanner}>
+                <Text style={styles.pendingBannerText}>
+                  📤 {pendingCount} survey{pendingCount > 1 ? 's' : ''} pending sync
+                </Text>
+                {isOnline && (
+                  <TouchableOpacity onPress={handleForceSync} style={styles.syncNowButton}>
+                    <Text style={styles.syncNowButtonText}>Sync Now</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            
             {stats && (
               <View style={styles.statsContainer}>
                 <Text style={styles.statsText}>
@@ -325,6 +441,18 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     marginTop: 20
   },
+  networkIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  networkIndicatorText: {
+    color: 'white',
+    fontSize: 8,
+  },
   menuButton: {
     padding: 5,
   },
@@ -343,6 +471,23 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 18,
     fontWeight: "bold",
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncButton: {
+    padding: 8,
+    borderRadius: 4,
+    backgroundColor: '#f39c12',
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  syncButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   surveyButton: {
     padding: 8,
@@ -442,6 +587,44 @@ const styles = StyleSheet.create({
   },
   designation: {
     color: "#666",
+  },
+  offlineBanner: {
+    backgroundColor: '#e74c3c',
+    padding: 10,
+    borderRadius: 6,
+    marginTop: 10,
+  },
+  offlineBannerText: {
+    color: 'white',
+    fontSize: 12,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  pendingBanner: {
+    backgroundColor: '#f39c12',
+    padding: 10,
+    borderRadius: 6,
+    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pendingBannerText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  syncNowButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+  },
+  syncNowButtonText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '600',
   },
   statsContainer: {
     marginTop: 10,

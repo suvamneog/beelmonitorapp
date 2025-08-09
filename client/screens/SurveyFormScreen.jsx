@@ -14,7 +14,8 @@ import {
   Platform,
   KeyboardAvoidingView,
   Image,
-  PermissionsAndroid
+  PermissionsAndroid,
+  Modal
 } from 'react-native';
 import { Dropdown } from 'react-native-element-dropdown';
 import { 
@@ -23,6 +24,16 @@ import {
   getMasterData, 
   uploadBeelPhoto  
 } from '../utils/api';
+import { 
+  saveDraft, 
+  getDraft, 
+  deleteDraft, 
+  getDrafts,
+  addPendingSubmission,
+  saveOfflineImage 
+} from '../utils/offlineStorage';
+import syncManager from '../utils/syncManager';
+import NetInfo from '@react-native-netinfo/netinfo';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert as RNAlert } from 'react-native';
@@ -135,6 +146,54 @@ const SurveyFormScreen = ({ route, navigation }) => {
   const [allBlocks, setAllBlocks] = useState([]);
   const [loadingMasterData, setLoadingMasterData] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [isDraft, setIsDraft] = useState(false);
+  const [draftId, setDraftId] = useState(null);
+  const [showDraftModal, setShowDraftModal] = useState(false);
+  const [availableDrafts, setAvailableDrafts] = useState([]);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  const [lastSaved, setLastSaved] = useState(null);
+  const [syncStatus, setSyncStatus] = useState(null);
+
+  // Network status monitoring
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected && state.isInternetReachable);
+    });
+
+    // Initial network check
+    NetInfo.fetch().then(state => {
+      setIsOnline(state.isConnected && state.isInternetReachable);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Sync status monitoring
+  useEffect(() => {
+    const handleSyncStatus = (status) => {
+      setSyncStatus(status);
+    };
+
+    syncManager.addSyncListener(handleSyncStatus);
+    return () => syncManager.removeSyncListener(handleSyncStatus);
+  }, []);
+
+  // Load drafts on component mount
+  useEffect(() => {
+    loadAvailableDrafts();
+  }, []);
+
+  // Auto-save functionality
+  useEffect(() => {
+    if (autoSaveEnabled && !isEdit) {
+      const autoSaveTimer = setTimeout(() => {
+        handleSaveDraft(true); // Silent save
+      }, 30000); // Auto-save every 30 seconds
+
+      return () => clearTimeout(autoSaveTimer);
+    }
+  }, [formData, autoSaveEnabled, isEdit]);
 
   useEffect(() => {
     const fetchMasterData = async () => {
@@ -193,6 +252,9 @@ const SurveyFormScreen = ({ route, navigation }) => {
         image_lng: surveyData.image_lng || ''
       };
       setFormData(editData);
+    } else if (route.params?.draftId) {
+      // Load draft data
+      loadDraftData(route.params.draftId);
     }
   }, [isEdit, surveyData]);
 
@@ -257,6 +319,76 @@ const SurveyFormScreen = ({ route, navigation }) => {
     return isValid;
   }, [formData, validateField]);
 
+  const loadAvailableDrafts = async () => {
+    try {
+      const drafts = await getDrafts();
+      const draftList = Object.values(drafts).sort((a, b) => 
+        new Date(b.lastModified) - new Date(a.lastModified)
+      );
+      setAvailableDrafts(draftList);
+    } catch (error) {
+      console.error('Error loading drafts:', error);
+    }
+  };
+
+  const loadDraftData = async (draftId) => {
+    try {
+      const draft = await getDraft(draftId);
+      if (draft) {
+        setFormData(draft);
+        setIsDraft(true);
+        setDraftId(draftId);
+        Alert.alert('Draft Loaded', 'Your saved draft has been loaded successfully.');
+      }
+    } catch (error) {
+      console.error('Error loading draft:', error);
+      Alert.alert('Error', 'Failed to load draft data.');
+    }
+  };
+
+  const handleSaveDraft = async (silent = false) => {
+    try {
+      const draftData = {
+        ...formData,
+        currentPhase,
+        isDraft: true
+      };
+
+      const savedDraftId = await saveDraft(draftData);
+      setDraftId(savedDraftId);
+      setIsDraft(true);
+      setLastSaved(new Date().toISOString());
+
+      if (!silent) {
+        Alert.alert('Draft Saved', 'Your survey has been saved as a draft.');
+      }
+
+      await loadAvailableDrafts();
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      if (!silent) {
+        Alert.alert('Error', 'Failed to save draft.');
+      }
+    }
+  };
+
+  const handleDeleteDraft = async (draftIdToDelete) => {
+    try {
+      await deleteDraft(draftIdToDelete);
+      await loadAvailableDrafts();
+      
+      if (draftIdToDelete === draftId) {
+        setDraftId(null);
+        setIsDraft(false);
+      }
+      
+      Alert.alert('Success', 'Draft deleted successfully.');
+    } catch (error) {
+      console.error('Error deleting draft:', error);
+      Alert.alert('Error', 'Failed to delete draft.');
+    }
+  };
+
   const shouldValidateInPhase = useCallback((field, phase) => {
     const phaseFields = {
       1: ['year', 'beel_name', 'district_id', 'block_id', 'lac', 'gp', 'village', 'mauza', 'po'],
@@ -293,21 +425,48 @@ const SurveyFormScreen = ({ route, navigation }) => {
           numericFields.map(field => [field, formData[field] ? Number(formData[field]) : ''])
         )
       };
-      let response;
-      if (isEdit) {
-        response = await updateSurvey({ ...submitData, id: surveyData.id }, token);
-        Alert.alert(
-          'Success', 
-          'Survey updated successfully!',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
+
+      if (isOnline) {
+        // Online submission
+        let response;
+        if (isEdit) {
+          response = await updateSurvey({ ...submitData, id: surveyData.id }, token);
+          Alert.alert(
+            'Success', 
+            'Survey updated successfully!',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+        } else {
+          response = await submitSurvey(submitData, token);
+          Alert.alert(
+            'Success', 
+            'Survey submitted successfully!',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+        }
+
+        // Delete draft if it was saved
+        if (draftId) {
+          await deleteDraft(draftId);
+        }
       } else {
-        response = await submitSurvey(submitData, token);
+        // Offline submission - save to pending
+        await addPendingSubmission({
+          data: submitData,
+          isEdit,
+          originalId: isEdit ? surveyData.id : null
+        });
+
         Alert.alert(
-          'Success', 
-          'Survey submitted successfully!',
+          'Saved for Later', 
+          'You are offline. The survey has been saved and will be submitted automatically when you come back online.',
           [{ text: 'OK', onPress: () => navigation.goBack() }]
         );
+
+        // Delete draft if it was saved
+        if (draftId) {
+          await deleteDraft(draftId);
+        }
       }
     } catch (error) {
       Alert.alert(
@@ -580,14 +739,36 @@ const captureImage = async () => {
 
       } catch (error) {
         console.error('Upload error:', error);
-        let errorMessage = error.message || 'Failed to upload image';
-        
-        // Handle specific file size error
-        if (errorMessage.includes('may not be greater than 2048 kilobytes')) {
-          errorMessage = 'Image file is too large (max 2MB). Please try taking another photo or reduce image quality.';
+        if (!isOnline) {
+          // Save image offline
+          const imageId = await saveOfflineImage(uri, {
+            beelId: isEdit && surveyData?.id ? parseInt(surveyData.id) : 0,
+            title: 'Offline Photo',
+            latitude: lat !== null ? lat.toString() : '0',
+            longitude: lng !== null ? lng.toString() : '0'
+          });
+
+          // Add to form data as offline reference
+          setFormData(prev => ({
+            ...prev,
+            beel_images: [...prev.beel_images, `offline:${imageId}`],
+            image_lat: lat !== null ? lat.toString() : prev.image_lat,
+            image_lng: lng !== null ? lng.toString() : prev.image_lng,
+            lat: (lat !== null && (!prev.lat || prev.lat === '')) ? lat.toString() : prev.lat,
+            lng: (lng !== null && (!prev.lng || prev.lng === '')) ? lng.toString() : prev.lng
+          }));
+
+          Alert.alert('Saved Offline', 'Image saved offline and will be uploaded when you come back online.');
+        } else {
+          let errorMessage = error.message || 'Failed to upload image';
+          
+          // Handle specific file size error
+          if (errorMessage.includes('may not be greater than 2048 kilobytes')) {
+            errorMessage = 'Image file is too large (max 2MB). Please try taking another photo or reduce image quality.';
+          }
+          
+          Alert.alert('Upload Error', errorMessage);
         }
-        
-        Alert.alert('Upload Error', errorMessage);
       } finally {
         setUploadingImage(false);
       }
@@ -634,6 +815,81 @@ const captureImage = async () => {
       onDistanceUpdate: handleDistanceUpdate
     });
   };
+
+  const renderNetworkStatus = () => (
+    <View style={[styles.networkStatus, { backgroundColor: isOnline ? '#27ae60' : '#e74c3c' }]}>
+      <Text style={styles.networkStatusText}>
+        {isOnline ? '🌐 Online' : '📱 Offline Mode'}
+      </Text>
+      {syncStatus && (
+        <Text style={styles.syncStatusText}>
+          {syncStatus.syncStatus === 'started' && '🔄 Syncing...'}
+          {syncStatus.syncStatus === 'completed' && '✅ Synced'}
+          {syncStatus.syncStatus === 'failed' && '❌ Sync Failed'}
+        </Text>
+      )}
+    </View>
+  );
+
+  const renderDraftModal = () => (
+    <Modal
+      visible={showDraftModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowDraftModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Saved Drafts</Text>
+            <TouchableOpacity onPress={() => setShowDraftModal(false)}>
+              <Text style={styles.modalCloseButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.draftList}>
+            {availableDrafts.length === 0 ? (
+              <Text style={styles.noDraftsText}>No saved drafts found</Text>
+            ) : (
+              availableDrafts.map((draft) => (
+                <View key={draft.id} style={styles.draftItem}>
+                  <View style={styles.draftInfo}>
+                    <Text style={styles.draftName}>
+                      {draft.beel_name || 'Unnamed Survey'}
+                    </Text>
+                    <Text style={styles.draftDate}>
+                      Saved: {new Date(draft.lastModified).toLocaleDateString()}
+                    </Text>
+                    <Text style={styles.draftPhase}>
+                      Phase: {draft.currentPhase || 1}/4
+                    </Text>
+                  </View>
+                  <View style={styles.draftActions}>
+                    <TouchableOpacity
+                      style={styles.loadDraftButton}
+                      onPress={() => {
+                        loadDraftData(draft.id);
+                        setShowDraftModal(false);
+                      }}
+                    >
+                      <Text style={styles.loadDraftButtonText}>Load</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteDraftButton}
+                      onPress={() => handleDeleteDraft(draft.id)}
+                    >
+                      <Text style={styles.deleteDraftButtonText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
   const renderValidationGuidance = useCallback(() => (
     <View style={styles.guidanceContainer}>
       <Text style={styles.guidanceTitle}>Validation Rules:</Text>
@@ -1130,6 +1386,8 @@ const captureImage = async () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {renderNetworkStatus()}
+      
       <View style={styles.header}>
         <TouchableOpacity 
           onPress={() => currentPhase === 1 ? navigation.goBack() : prevPhase()}
@@ -1137,9 +1395,18 @@ const captureImage = async () => {
         >
           <Text style={styles.backButton}>{currentPhase === 1 ? '✕' : '←'}</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Survey Form {isEdit ? '(Edit Mode)' : ''} (Phase {currentPhase}/4)</Text>
-        <View style={styles.headerRight} />
+        <Text style={styles.headerTitle}>
+          Survey Form {isEdit ? '(Edit)' : isDraft ? '(Draft)' : ''} (Phase {currentPhase}/4)
+        </Text>
+        <TouchableOpacity 
+          onPress={() => setShowDraftModal(true)}
+          style={styles.draftsButton}
+        >
+          <Text style={styles.draftsButtonText}>📄</Text>
+        </TouchableOpacity>
       </View>
+
+      {renderDraftModal()}
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -1151,9 +1418,25 @@ const captureImage = async () => {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
+          {isDraft && (
+            <View style={styles.draftBanner}>
+              <Text style={styles.draftBannerText}>
+                📝 Draft Mode - Last saved: {lastSaved ? new Date(lastSaved).toLocaleString() : 'Not saved'}
+              </Text>
+            </View>
+          )}
+          
           {renderPhase()}
           
           <View style={styles.navigationButtons}>
+            <TouchableOpacity 
+              style={[styles.navButton, styles.draftButton]} 
+              onPress={() => handleSaveDraft(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.buttonText}>Save Draft</Text>
+            </TouchableOpacity>
+            
             {currentPhase > 1 && (
               <TouchableOpacity 
                 style={[styles.navButton, styles.prevButton]} 
@@ -1182,7 +1465,9 @@ const captureImage = async () => {
                 {loading ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text style={styles.submitButtonText}>{isEdit ? 'Update Survey' : 'Submit Survey'}</Text>
+                  <Text style={styles.submitButtonText}>
+                    {isEdit ? 'Update Survey' : isOnline ? 'Submit Survey' : 'Save for Later'}
+                  </Text>
                 )}
               </TouchableOpacity>
             )}
@@ -1235,6 +1520,142 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     width: isSmallDevice ? 30 : 40,
+  },
+  draftsButton: {
+    padding: 8,
+  },
+  draftsButtonText: {
+    color: 'white',
+    fontSize: 20,
+  },
+  networkStatus: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+  },
+  networkStatusText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  syncStatusText: {
+    color: 'white',
+    fontSize: 11,
+  },
+  draftBanner: {
+    backgroundColor: '#f39c12',
+    padding: 12,
+    borderRadius: 6,
+    marginBottom: 15,
+  },
+  draftBannerText: {
+    color: 'white',
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    width: '90%',
+    maxHeight: '80%',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2c3e50',
+  },
+  modalCloseButton: {
+    fontSize: 24,
+    color: '#7f8c8d',
+  },
+  draftList: {
+    maxHeight: 400,
+  },
+  noDraftsText: {
+    textAlign: 'center',
+    color: '#7f8c8d',
+    fontSize: 16,
+    padding: 40,
+  },
+  draftItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  draftInfo: {
+    flex: 1,
+  },
+  draftName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#2c3e50',
+    marginBottom: 4,
+  },
+  draftDate: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginBottom: 2,
+  },
+  draftPhase: {
+    fontSize: 12,
+    color: '#3498db',
+  },
+  draftActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  loadDraftButton: {
+    backgroundColor: '#3498db',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+  },
+  loadDraftButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  deleteDraftButton: {
+    backgroundColor: '#e74c3c',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+  },
+  deleteDraftButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
   },
   content: {
     flex: 1,
@@ -1354,6 +1775,9 @@ const styles = StyleSheet.create({
   },
   nextButton: {
     backgroundColor: '#3498db',
+  },
+  draftButton: {
+    backgroundColor: '#f39c12',
   },
   submitButton: {
     backgroundColor: '#27ae60',
