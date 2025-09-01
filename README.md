@@ -4,7 +4,7 @@
 
 The Beel Monitor App is a comprehensive mobile application designed for government officers to monitor, survey, and manage beel (water body) information across different districts and blocks. The app provides a complete solution for field data collection, GPS-based location tracking, image capture with geolocation, and comprehensive survey management.
 
-## 🏗️ Technology Stack
+## Technology Stack
 
 ### Frontend (Mobile App)
 - **React Native** (v0.79.3) - Cross-platform mobile development
@@ -29,7 +29,7 @@ The Beel Monitor App is a comprehensive mobile application designed for governme
 - **Expo CLI** - Command-line interface
 - **Metro Bundler** - JavaScript bundler
 
-## 🚀 Features & Functionality
+##  Features & Functionality
 
 ### 1. Authentication System
 - **Officer Login**: Secure email/password authentication
@@ -79,7 +79,7 @@ The Beel Monitor App is a comprehensive mobile application designed for governme
 - **Settings Panel**: App configuration options
 - **Logout Functionality**: Secure session termination
 
-## 📱 App Architecture
+##  App Architecture
 
 ### Screen Structure
 ```
@@ -111,7 +111,7 @@ screens/
 └── Utility screens
 ```
 
-## 🔄 Workflow
+##  Workflow
 
 ### 1. Officer Authentication
 ```
@@ -219,7 +219,7 @@ Distance Calculation → Data Return
 2. Press `a` for Android or `i` for iOS in terminal
 3. App loads in emulator
 
-## 🏗️ Build & Deployment
+##  Build & Deployment
 
 ### Development Build
 ```bash
@@ -251,7 +251,7 @@ eas build --platform android
 eas build --platform ios
 ```
 
-## 🔐 Security Features
+##  Security Features
 
 ### Authentication
 - JWT Bearer token authentication
@@ -271,7 +271,7 @@ eas build --platform ios
 - Storage permission control
 - Runtime permission requests
 
-## 📊 API Integration
+##  API Integration
 
 ### Base Configuration
 ```javascript
@@ -294,7 +294,7 @@ const BASE_URL = 'http://122.185.169.250/gisapi/public/api';
 - User-friendly error messages
 - Retry mechanisms
 
-## 🧪 Testing
+##  Testing
 
 ### Manual Testing
 - Device testing on Android/iOS
@@ -308,7 +308,7 @@ const BASE_URL = 'http://122.185.169.250/gisapi/public/api';
 - Console logging
 - Network inspection
 
-## 📱 Platform Support
+##  Platform Support
 
 ### Android
 - Minimum SDK: API 21 (Android 5.0)
@@ -322,7 +322,7 @@ const BASE_URL = 'http://122.185.169.250/gisapi/public/api';
 - Architecture: ARM64
 - Permissions: Location, Camera, Photo Library
 
-## 🔧 Configuration Files
+##  Configuration Files
 
 ### Key Configuration
 - `app.json` - Expo configuration
@@ -335,7 +335,7 @@ const BASE_URL = 'http://122.185.169.250/gisapi/public/api';
 - Google Maps API key
 - Build-specific configurations
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 1. **Network Errors**
@@ -365,7 +365,7 @@ npx react-native start --reset-cache
 cd android && ./gradlew clean
 ```
 
-## 📈 Performance Optimization
+##  Performance Optimization
 
 ### Image Optimization
 - Image compression before upload
@@ -382,7 +382,7 @@ cd android && ./gradlew clean
 - Event listener removal
 - Image memory management
 
-## 🤝 Contributing
+##  Contributing
 
 ### Development Guidelines
 1. Follow React Native best practices
@@ -401,14 +401,14 @@ cd android && ./gradlew clean
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📞 Support
+##  Support
 
 For any issues or questions:
 - Create an issue on GitHub repository
 - Contact the development team
 - Check documentation for common solutions
 
-## 🔄 Version History
+##  Version History
 
 ### Current Version: 1.0.0
 - Initial release
